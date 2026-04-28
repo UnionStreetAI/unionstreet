@@ -100,13 +100,13 @@ describe("Codex Responses transport", () => {
 
   test("streamCodex_WhenHttpFails_EmitsTruncatedHttpError", async () => {
     const token = jwtWithPayload({ "https://api.openai.com/auth": { chatgpt_account_id: "acct_error" } });
-    const fetcher = async () => new Response("x".repeat(600), { status: 500 });
+    const fetcher = async (_url: string | URL | Request, _init?: RequestInit) => new Response("x".repeat(600), { status: 500 });
 
     const events = await collect(streamCodex({
       token,
       model: "gpt-5.4",
       messages: [{ role: "user", content: "hi" }],
-      fetch: fetcher as typeof fetch,
+      fetch: fetcher as unknown as typeof fetch,
     }));
 
     expect(events, "HTTP failures should surface as a single self-validating error event.").toHaveLength(1);

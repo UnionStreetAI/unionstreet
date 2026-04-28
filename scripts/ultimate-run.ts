@@ -1,7 +1,11 @@
 #!/usr/bin/env bun
-import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import {
+  startDummyMcpServer,
+  type DummyMcpServerHandle,
+} from "../packages/us-core/src/dummy-mcp-server.ts";
 
 await loadLocalEnv();
 
@@ -16,6 +20,8 @@ const repoRoot = process.cwd();
 const cli = join(repoRoot, "packages/us-cli/src/index.ts");
 const usHome = await mkdtemp(join(tmpdir(), "union-street-ultimate-"));
 const workdir = await mkdtemp(join(tmpdir(), "union-street-ultimate-work-"));
+let poetryMcp: DummyMcpServerHandle | undefined;
+let contextMcp: DummyMcpServerHandle | undefined;
 
 try {
   process.env.US_HOME = usHome;
@@ -24,7 +30,27 @@ try {
   if (live && !apiKey) throw new Error("Live ultimate run requires US_ULTIMATE_API_KEY.");
 
   const core = await import("../packages/us-core/src/index.ts");
+  poetryMcp = await startDummyMcpServer({
+    name: "poetry",
+    token: "ultimate-poetry-token",
+    toolName: "poems.read",
+    poem: "Orange sparks on midnight rails / Work reports and truth prevails.",
+  });
+  contextMcp = await startDummyMcpServer({
+    name: "context",
+    token: "ultimate-context-token",
+    toolName: "context.poem",
+    poem: "A quiet packet crossed the wire / And lit the agent's small campfire.",
+  });
+
   const { config, org } = core.buildDemoFederationConfig();
+  config.grants.push({
+    id: "ultimate-dummy-mcp",
+    resource: "mcp",
+    servers: ["poetry", "context"],
+    tools: ["poems.*", "context.*"],
+    roles: ["executive"],
+  });
   const packs = new Map(core.buildDemoAgentPacks(org).map((pack) => [pack.id, pack]));
   const allAgents = org.map((node) => node.id).sort();
   const children = childrenByManager(org);
@@ -48,6 +74,7 @@ try {
         primary: { provider, id: model },
         fallback: [],
       },
+      toolkit: node.id === "coo" ? { ...pack.toolkit, mcp: [...new Set([...pack.toolkit.mcp, "poetry", "context"])].sort() } : pack.toolkit,
     });
   }
 
@@ -63,6 +90,17 @@ try {
       },
     },
   }));
+  await core.saveMcpApiKeyCredential({ profile: "coo", server: "poetry", apiKey: poetryMcp.token });
+  await core.saveMcpApiKeyCredential({ profile: "coo", server: "context", apiKey: contextMcp.token });
+  await writeFile(
+    join(workdir, ".mcp.json"),
+    JSON.stringify({
+      mcp: {
+        poetry: { type: "remote", url: poetryMcp.url, enabled: true, headers: { Authorization: "Bearer" } },
+        context: { type: "remote", url: contextMcp.url, enabled: true, headers: { Authorization: "Bearer" } },
+      },
+    }, null, 2),
+  );
 
   console.log(`\nultimate head-node run`);
   console.log(`  mode      ${live ? "live" : "stubbed model stream"}`);
@@ -75,6 +113,7 @@ try {
   const headText = await cliPrompt([
       task,
       "You are the head node. Acknowledge the task and prepare to delegate through the org chart.",
+      "Use the poetry MCP tool once to add a poem to context before delegating.",
       "Do not reveal credentials or secrets.",
     ].join("\n"));
   touched.add("coo");
@@ -129,6 +168,9 @@ try {
   const promptStarts = allEvents.filter((event) => event.type === "prompt.run.start");
   assert(promptStarts.some((event) => event.actor === "coo"), "head-node -p should emit prompt.run.start for @coo");
   assert(allEvents.some((event) => event.type === "prompt.model.start" && event.actor === "coo" && JSON.stringify(event.payload).includes(provider) && JSON.stringify(event.payload).includes(model)), `head-node -p should start ${provider}/${model}`);
+  assert(allEvents.some((event) => event.type === "mcp.tool.list" && event.actor === "coo" && event.resource === "mcp:poetry" && event.outcome === "success"), "head-node -p should discover the authenticated poetry MCP server");
+  assert(allEvents.some((event) => event.type === "mcp.tool.call" && event.actor === "coo" && String(event.resource).includes("mcp:")), "head-node -p should execute at least one authenticated dummy MCP tool");
+  assert(allEvents.some((event) => event.type === "prompt.tool.call" && event.actor === "coo" && String(event.resource).includes("tool:mcp_")), "head-node -p should route dummy MCP calls through the normal model tool path");
   assert(lashCalls.length >= delegatedEdges.length + reportedEdges.length, `expected at least ${delegatedEdges.length + reportedEdges.length} Lash calls, got ${lashCalls.length}`);
   assert(lashAllows.length >= delegatedEdges.length + reportedEdges.length, `expected at least ${delegatedEdges.length + reportedEdges.length} Lash allow events, got ${lashAllows.length}`);
 
@@ -145,11 +187,14 @@ try {
   console.log(`  touched agents      ${touched.size}/${allAgents.length}`);
   console.log(`  lash call events    ${lashCalls.length}`);
   console.log(`  lash allow events   ${lashAllows.length}`);
+  console.log(`  dummy mcp servers   poetry, context`);
   console.log(`  model calls         ${usage.calls}`);
   console.log(`  tokens              ${usage.total} total · ${usage.input} in · ${usage.output} out · ${usage.reasoning} reasoning · ${usage.cacheRead} cache read · ${usage.cacheWrite} cache write`);
   console.log(`  cost                $${(usage.costMicroUsd / 1_000_000).toFixed(6)}`);
   if (keep) console.log(`  US_HOME             ${usHome}`);
 } finally {
+  poetryMcp?.stop();
+  contextMcp?.stop();
   if (!keep) {
     await rm(usHome, { recursive: true, force: true });
     await rm(workdir, { recursive: true, force: true });

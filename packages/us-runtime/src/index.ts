@@ -5,6 +5,7 @@
  * intentionally backed by us-core state only: no dashboard fixtures, no mocked
  * scheduler execution, and no synthetic agent data.
  */
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   FileMemoryStore,
   US_HOME,
@@ -26,6 +27,7 @@ import {
   resolveDelegationTargets,
   resolveMemorySyncConfig,
   resolveMcpGrantsForAgent,
+  profileExists,
   runAgentPrompt,
   summarizeUsage,
   writeEvent,
@@ -43,6 +45,7 @@ export interface RuntimeServerOptions {
   port?: number;
   hostname?: string;
   cwd?: string;
+  authToken?: string;
 }
 
 export interface RuntimeServerHandle {
@@ -53,11 +56,12 @@ export interface RuntimeServerHandle {
   stop(): void;
 }
 
-export function createRuntimeFetchHandler(options: Pick<RuntimeServerOptions, "cwd"> = {}) {
+export function createRuntimeFetchHandler(options: Pick<RuntimeServerOptions, "cwd" | "authToken"> = {}) {
   const cwd = options.cwd ?? process.cwd();
+  const authToken = "authToken" in options ? options.authToken : process.env.US_RUNTIME_BEARER_TOKEN;
   return async function fetchHandler(request: Request): Promise<Response> {
     try {
-      return await routeRequest(request, cwd);
+      return await routeRequest(request, cwd, typeof authToken === "string" ? authToken : undefined);
     } catch (error) {
       return json({
         error: "internal_error",
@@ -72,7 +76,7 @@ export function startRuntimeServer(options: RuntimeServerOptions = {}): RuntimeS
   const server = Bun.serve({
     hostname,
     port: options.port ?? 0,
-    fetch: createRuntimeFetchHandler({ cwd: options.cwd }),
+    fetch: createRuntimeFetchHandler({ cwd: options.cwd, authToken: options.authToken }),
   });
   const port = server.port ?? options.port ?? 0;
   return {
@@ -84,7 +88,7 @@ export function startRuntimeServer(options: RuntimeServerOptions = {}): RuntimeS
   };
 }
 
-async function routeRequest(request: Request, cwd: string): Promise<Response> {
+async function routeRequest(request: Request, cwd: string, authToken?: string): Promise<Response> {
   const url = new URL(request.url);
   const path = trimPath(url.pathname);
   const parts = path.split("/").filter(Boolean);
@@ -95,6 +99,9 @@ async function routeRequest(request: Request, cwd: string): Promise<Response> {
   }
 
   if (parts[0] !== "api") return json({ error: "not_found", path: url.pathname }, 404);
+  if (!authorizeRuntimeRequest(request, authToken)) {
+    return json({ error: "unauthorized", message: "runtime API requires Authorization: Bearer <token>" }, 401);
+  }
 
   if (request.method === "GET" && parts[1] === "runtime" && parts.length === 2) {
     const profiles = await listProfiles();
@@ -129,15 +136,21 @@ async function routeRequest(request: Request, cwd: string): Promise<Response> {
   }
 
   if (request.method === "GET" && parts[1] === "agents" && parts[2] && parts.length === 3) {
-    return json(await agentSnapshot(parts[2], cwd));
+    const profile = await readExistingProfile(parts[2]);
+    if (!profile.ok) return json(profile.body, profile.status);
+    return json(await agentSnapshot(profile.profile, cwd));
   }
 
   if (request.method === "POST" && parts[1] === "agents" && parts[2] && parts[3] === "prompt" && parts.length === 4) {
+    const profile = await readExistingProfile(parts[2]);
+    if (!profile.ok) return json(profile.body, profile.status);
     const body = await readJsonBody(request);
+    if (isBodyTooLarge(body)) return json({ error: "body_too_large", message: body.message }, 413);
+    if (isMalformedJson(body)) return json({ error: "malformed_json", message: body.message }, 400);
     const prompt = readPayloadString(body, "prompt");
     if (!prompt) return json({ error: "missing_prompt", message: "agent prompt requires JSON body { prompt: string }" }, 400);
     const result = await runAgentPrompt({
-      profile: parts[2],
+      profile: profile.profile,
       prompt,
       cwd,
       ...(readPayloadString(body, "sessionId") ? { sessionId: readPayloadString(body, "sessionId") } : {}),
@@ -147,16 +160,22 @@ async function routeRequest(request: Request, cwd: string): Promise<Response> {
   }
 
   if (request.method === "GET" && parts[1] === "runtimes" && parts.length === 2) {
-    const profiles = readProfilesParam(url) ?? await listProfiles();
+    const profilesResult = await readExistingProfilesParam(url);
+    if (!profilesResult.ok) return json(profilesResult.body, profilesResult.status);
+    const profiles = profilesResult.profiles ?? await listProfiles();
     return json({ runtimes: await Promise.all(profiles.map((profile) => resolveAgentRuntime(profile))) });
   }
 
   if (request.method === "GET" && parts[1] === "runtimes" && parts[2] && parts.length === 3) {
-    return json(await resolveAgentRuntime(parts[2]));
+    const profile = await readExistingProfile(parts[2]);
+    if (!profile.ok) return json(profile.body, profile.status);
+    return json(await resolveAgentRuntime(profile.profile));
   }
 
   if (request.method === "POST" && parts[1] === "runtimes" && parts[2] && parts[3] === "ensure" && parts.length === 4) {
-    return json(await ensureAgentWorkspace(parts[2]));
+    const profile = await readExistingProfile(parts[2]);
+    if (!profile.ok) return json(profile.body, profile.status);
+    return json(await ensureAgentWorkspace(profile.profile));
   }
 
   if (request.method === "GET" && parts[1] === "events" && parts.length === 2) {
@@ -173,10 +192,11 @@ async function routeRequest(request: Request, cwd: string): Promise<Response> {
   }
 
   if (request.method === "GET" && parts[1] === "memory" && parts.length === 2) {
-    const profile = readStringParam(url, "profile");
-    const limit = readNumberParam(url, "limit") ?? 100;
+    const profileResult = await readOptionalExistingProfileParam(url);
+    if (!profileResult.ok) return json(profileResult.body, profileResult.status);
+    const limit = readLimitParam(url, "limit", 100, 1_000);
     const memory = await queryMemoryEvents({
-      ...(profile ? { peer: profile } : {}),
+      ...(profileResult.profile ? { peer: profileResult.profile } : {}),
       ...(readStringParam(url, "kind") ? { kind: readStringParam(url, "kind") as MemoryEventKind } : {}),
       ...(readStringParam(url, "trace") ? { trace: readStringParam(url, "trace") } : {}),
       limit,
@@ -185,35 +205,47 @@ async function routeRequest(request: Request, cwd: string): Promise<Response> {
   }
 
   if (request.method === "GET" && parts[1] === "memory" && parts[2] === "anchors" && parts.length === 3) {
-    const profile = readStringParam(url, "profile");
-    if (!profile) return json({ error: "missing_profile", message: "memory anchors require ?profile=<agent>" }, 400);
-    const limit = readNumberParam(url, "limit") ?? 25;
+    if (!readStringParam(url, "profile")) return json({ error: "missing_profile", message: "memory anchors require ?profile=<agent>" }, 400);
+    const profileResult = await readOptionalExistingProfileParam(url);
+    if (!profileResult.ok) return json(profileResult.body, profileResult.status);
+    const limit = readLimitParam(url, "limit", 25, 1_000);
     const store = new FileMemoryStore();
     try {
-      return json({ anchors: await store.recentAnchors(profile, limit) });
+      return json({ anchors: await store.recentAnchors(profileResult.profile!, limit) });
     } finally {
       await store.close();
     }
   }
 
   if (request.method === "GET" && parts[1] === "sessions" && parts.length === 2) {
-    const profile = readStringParam(url, "profile");
-    if (!profile) return json({ error: "missing_profile", message: "sessions require ?profile=<agent>" }, 400);
-    return json({ sessions: await listSessions(profile) });
+    if (!readStringParam(url, "profile")) return json({ error: "missing_profile", message: "sessions require ?profile=<agent>" }, 400);
+    const profileResult = await readOptionalExistingProfileParam(url);
+    if (!profileResult.ok) return json(profileResult.body, profileResult.status);
+    return json({ sessions: await listSessions(profileResult.profile!) });
   }
 
   if (request.method === "GET" && parts[1] === "scheduler" && parts[2] === "jobs" && parts.length === 3) {
-    return json({ jobs: await listSchedulerJobs(readProfilesParam(url) ?? undefined) });
+    const profilesResult = await readExistingProfilesParam(url);
+    if (!profilesResult.ok) return json(profilesResult.body, profilesResult.status);
+    return json({ jobs: await listSchedulerJobs(profilesResult.profiles ?? undefined) });
   }
 
   if (request.method === "GET" && parts[1] === "scheduler" && parts[2] === "due" && parts.length === 3) {
-    return json({ due: await dueSchedulerJobs(readNow(url), readProfilesParam(url) ?? undefined) });
+    const profilesResult = await readExistingProfilesParam(url);
+    if (!profilesResult.ok) return json(profilesResult.body, profilesResult.status);
+    return json({ due: await dueSchedulerJobs(readNow(url), profilesResult.profiles ?? undefined) });
   }
 
   if (request.method === "POST" && parts[1] === "scheduler" && parts[2] === "tick" && parts.length === 3) {
     const body = await readJsonBody(request);
+    if (isBodyTooLarge(body)) return json({ error: "body_too_large", message: body.message }, 413);
+    if (isMalformedJson(body)) return json({ error: "malformed_json", message: body.message }, 400);
     const now = readBodyNumber(body, "now") ?? readNow(url);
-    const profiles = readBodyStringArray(body, "profiles") ?? readProfilesParam(url) ?? undefined;
+    const profilesResult = readBodyStringArray(body, "profiles")
+      ? await readExistingProfilesFromValues(readBodyStringArray(body, "profiles")!)
+      : await readExistingProfilesParam(url);
+    if (!profilesResult.ok) return json(profilesResult.body, profilesResult.status);
+    const profiles = profilesResult.profiles ?? undefined;
     const claimed = await claimDueSchedulerJobs(now, profiles);
     const execute = readBooleanParam(url, "execute") ?? readBodyBoolean(body, "execute") ?? false;
     if (!execute) return json({ runs: claimed });
@@ -248,8 +280,20 @@ async function routeRequest(request: Request, cwd: string): Promise<Response> {
   }
 
   if (request.method === "POST" && parts[1] === "webhooks" && parts[2] && parts.length === 3) {
-    const body = await readJsonBody(request);
-    const source = parts[2];
+    const sourceResult = readWebhookSource(parts[2]);
+    if (!sourceResult.ok) return json(sourceResult.body, sourceResult.status);
+    const source = sourceResult.source;
+    let rawBody: string;
+    try {
+      rawBody = await readRawBody(request);
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) return json({ error: "body_too_large", message: error.message }, 413);
+      throw error;
+    }
+    const signature = verifyWebhookSignature(source, rawBody, request.headers);
+    if (!signature.ok) return json(signature.body, signature.status);
+    const body = parseJsonText(rawBody);
+    if (isMalformedJson(body)) return json({ error: "malformed_json", message: body.message }, 400);
     const actor = readHeaderPrincipal(request) ?? readPayloadString(body, "actor") ?? source;
     const event = await writeEvent({
       type: "webhook.received",
@@ -345,7 +389,7 @@ function readEventQuery(url: URL): EventQuery {
     ...(readStringParam(url, "outcome") ? { outcome: readStringParam(url, "outcome") as EventQuery["outcome"] } : {}),
     ...(readNumberParam(url, "since") ? { since: readNumberParam(url, "since") } : {}),
     ...(readNumberParam(url, "until") ? { until: readNumberParam(url, "until") } : {}),
-    limit: readNumberParam(url, "limit") ?? 100,
+    limit: readLimitParam(url, "limit", 100, 1_000),
   };
 }
 
@@ -360,19 +404,64 @@ function readUsageQuery(url: URL): UsageQuery {
     ...(readStringParam(url, "kind") ? { kind: readStringParam(url, "kind") as UsageQuery["kind"] } : {}),
     ...(readNumberParam(url, "since") ? { since: readNumberParam(url, "since") } : {}),
     ...(readNumberParam(url, "until") ? { until: readNumberParam(url, "until") } : {}),
-    limit: readNumberParam(url, "limit") ?? 100,
+    limit: readLimitParam(url, "limit", 100, 1_000),
   };
 }
 
-async function readJsonBody(request: Request): Promise<unknown> {
+interface MalformedJson {
+  malformedJson: true;
+  message: string;
+}
+
+interface BodyTooLarge {
+  bodyTooLarge: true;
+  message: string;
+}
+
+const MAX_JSON_BODY_BYTES = 1_000_000;
+
+async function readJsonBody(request: Request): Promise<unknown | MalformedJson | BodyTooLarge> {
+  try {
+    return parseJsonText(await readRawBody(request));
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return { bodyTooLarge: true, message: error.message };
+    throw error;
+  }
+}
+
+async function readRawBody(request: Request): Promise<string> {
+  const length = Number(request.headers.get("content-length"));
+  if (Number.isFinite(length) && length > MAX_JSON_BODY_BYTES) {
+    throw new BodyTooLargeError(`request body exceeds ${MAX_JSON_BODY_BYTES} bytes`);
+  }
   const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > MAX_JSON_BODY_BYTES) {
+    throw new BodyTooLargeError(`request body exceeds ${MAX_JSON_BODY_BYTES} bytes`);
+  }
+  return text;
+}
+
+function parseJsonText(text: string): unknown | MalformedJson {
   if (!text.trim()) return {};
   try {
     return JSON.parse(text);
-  } catch {
-    return {};
+  } catch (error) {
+    return {
+      malformedJson: true,
+      message: `request body is not valid JSON: ${(error as Error).message}`,
+    };
   }
 }
+
+function isMalformedJson(value: unknown): value is MalformedJson {
+  return isRecord(value) && value.malformedJson === true && typeof value.message === "string";
+}
+
+function isBodyTooLarge(value: unknown): value is BodyTooLarge {
+  return isRecord(value) && value.bodyTooLarge === true && typeof value.message === "string";
+}
+
+class BodyTooLargeError extends Error {}
 
 function readProfilesParam(url: URL): string[] | undefined {
   const values = url.searchParams.getAll("profile").flatMap((value) => value.split(","));
@@ -390,6 +479,13 @@ function readNumberParam(url: URL, name: string): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readLimitParam(url: URL, name: string, fallback: number, max: number): number {
+  const value = readNumberParam(url, name);
+  if (value === undefined) return fallback;
+  if (!Number.isInteger(value) || value < 1) return fallback;
+  return Math.min(value, max);
 }
 
 function readBooleanParam(url: URL, name: string): boolean | undefined {
@@ -452,6 +548,140 @@ function selectedHeaders(headers: Headers): Record<string, string> {
   return out;
 }
 
+function readWebhookSource(
+  raw: string,
+): { ok: true; source: string } | { ok: false; status: number; body: { error: string; message: string } } {
+  const source = decodeURIComponent(raw).trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(source)) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: "invalid_webhook_source",
+        message: "webhook source must be lowercase letters, digits, underscores, or dashes, start with a letter, and be at most 64 characters",
+      },
+    };
+  }
+  return { ok: true, source };
+}
+
+function verifyWebhookSignature(
+  source: string,
+  rawBody: string,
+  headers: Headers,
+): { ok: true } | { ok: false; status: number; body: { error: string; message: string } } {
+  const secret = webhookSecretForSource(source);
+  if (!secret) return { ok: true };
+  const provided = headers.get("x-us-signature") ?? headers.get("x-hub-signature-256");
+  if (!provided?.trim()) {
+    return {
+      ok: false,
+      status: 401,
+      body: { error: "webhook_signature_required", message: `webhook:${source} requires an HMAC SHA-256 signature` },
+    };
+  }
+  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+  const actual = provided.trim().replace(/^sha256=/i, "");
+  if (!constantTimeEqualHex(actual, expected)) {
+    return {
+      ok: false,
+      status: 401,
+      body: { error: "webhook_signature_invalid", message: `webhook:${source} signature did not match` },
+    };
+  }
+  return { ok: true };
+}
+
+function webhookSecretForSource(source: string): string | undefined {
+  const key = `US_WEBHOOK_${source.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase()}_SECRET`;
+  return process.env[key]?.trim() || process.env.US_WEBHOOK_SECRET?.trim() || undefined;
+}
+
+function constantTimeEqualHex(actual: string, expected: string): boolean {
+  if (!/^[a-f0-9]+$/i.test(actual) || actual.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
+}
+
+async function readExistingProfile(
+  raw: string,
+): Promise<
+  | { ok: true; profile: string }
+  | { ok: false; status: number; body: { error: string; message: string } }
+> {
+  const profile = decodeURIComponent(raw).trim().replace(/^@+/, "");
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(profile)) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: "invalid_profile",
+        message: "profile must be lowercase letters, digits, underscores, or dashes, start with a letter, and be at most 64 characters",
+      },
+    };
+  }
+  if (!(await profileExists(profile))) {
+    return {
+      ok: false,
+      status: 404,
+      body: { error: "profile_not_found", message: `profile "${profile}" does not exist` },
+    };
+  }
+  return { ok: true, profile };
+}
+
+async function readOptionalExistingProfileParam(
+  url: URL,
+): Promise<
+  | { ok: true; profile?: string }
+  | { ok: false; status: number; body: { error: string; message: string } }
+> {
+  const raw = readStringParam(url, "profile");
+  if (!raw) return { ok: true };
+  const profile = await readExistingProfile(raw);
+  if (!profile.ok) return profile;
+  return { ok: true, profile: profile.profile };
+}
+
+async function readExistingProfilesParam(
+  url: URL,
+): Promise<
+  | { ok: true; profiles?: string[] }
+  | { ok: false; status: number; body: { error: string; message: string } }
+> {
+  const values = readProfilesParam(url);
+  if (!values) return { ok: true };
+  return readExistingProfilesFromValues(values);
+}
+
+async function readExistingProfilesFromValues(
+  values: string[],
+): Promise<
+  | { ok: true; profiles: string[] }
+  | { ok: false; status: number; body: { error: string; message: string } }
+> {
+  const out: string[] = [];
+  for (const value of values) {
+    const profile = await readExistingProfile(value);
+    if (!profile.ok) return profile;
+    if (!out.includes(profile.profile)) out.push(profile.profile);
+  }
+  return { ok: true, profiles: out };
+}
+
+function authorizeRuntimeRequest(request: Request, token: string | undefined): boolean {
+  const expected = token?.trim();
+  if (!expected) return true;
+  const auth = request.headers.get("authorization")?.trim() ?? "";
+  return constantTimeUtf8Equal(auth, `Bearer ${expected}`);
+}
+
+function constantTimeUtf8Equal(actual: string, expected: string): boolean {
+  const actualBytes = Buffer.from(actual);
+  const expectedBytes = Buffer.from(expected);
+  if (actualBytes.length !== expectedBytes.length) return false;
+  return timingSafeEqual(actualBytes, expectedBytes);
+}
+
 function trimPath(path: string): string {
   return path.replace(/^\/+|\/+$/g, "");
 }
@@ -477,7 +707,7 @@ function corsHeaders(): Record<string, string> {
   return {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type,authorization",
+    "access-control-allow-headers": "content-type,authorization,x-us-signature,x-hub-signature-256,x-union-street-actor,x-us-actor",
   };
 }
 

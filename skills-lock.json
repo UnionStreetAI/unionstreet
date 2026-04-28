@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "duck": {
+      "source": "UnionStreetAI/duck",
+      "sourceType": "github",
+      "skillPath": "skills/duck/SKILL.md",
+      "computedHash": "71286640dbdf426c81fc3b839101d77ca206534078dacc888d61ff2ac1c6427a"
+    }
+  }
+}

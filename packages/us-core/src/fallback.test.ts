@@ -39,7 +39,8 @@ describe("fallback model chains", () => {
 
   test("setFallbackChain_WhenLegacyProfileHasNoAgentPack_PersistsFallbacksInConfig", async () => {
     await core.initProfile("legacy-fallback", { role: "agent" });
-    await core.setProfileModel("legacy-fallback", "codex", "gpt-5.4");
+    await rm(core.profilePaths("legacy-fallback").agentPack, { force: true });
+    await core.setProfileModel("legacy-fallback", "gpt-5.4", "codex");
 
     await core.setFallbackChain("legacy-fallback", [
       { provider: "anthropic", id: "claude-sonnet" },

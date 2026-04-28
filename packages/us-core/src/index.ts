@@ -242,6 +242,7 @@ export type { LashPeerCallArgs, LashPeerMethod } from "./lash-mcp.ts";
 
 export { inspectMcpStatus } from "./mcp-status.ts";
 export type { McpStatus, McpServerInfo } from "./mcp-status.ts";
+export { resolveMcpToolsForAgent } from "./mcp-client.ts";
 
 export {
   deleteMcpCredential,

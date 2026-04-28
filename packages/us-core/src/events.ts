@@ -15,6 +15,8 @@ export type ControlPlaneEventType =
   | "lash.error"
   | "mcp.auth.save"
   | "mcp.auth.delete"
+  | "mcp.tool.list"
+  | "mcp.tool.call"
   | "secret.grant.resolve"
   | "secret.materialize"
   | "runtime.workspace.ensure"
@@ -80,7 +82,7 @@ export async function writeEvent(
     ...(input.threadId ? { threadId: input.threadId } : {}),
     outcome: input.outcome ?? "info",
     severity: input.severity ?? severityForOutcome(input.outcome ?? "info"),
-    ...(input.reason ? { reason: input.reason } : {}),
+    ...(input.reason ? { reason: redactReason(input.reason) } : {}),
     ...(input.payload !== undefined ? { payload: redactPayload(input.payload) } : {}),
   };
   await appendEvent(event);
@@ -165,4 +167,12 @@ function redactPayload(value: unknown): unknown {
     }
   }
   return out;
+}
+
+function redactReason(value: string): string {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer <redacted>")
+    .replace(/\b(sk|pk|ghp|gho|github_pat|xox[baprs])[-_A-Za-z0-9]{8,}\b/g, "$1-<redacted>")
+    .replace(/\b(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|secret)=([^&\s]+)/gi, "$1=<redacted>")
+    .replace(/("(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|secret)"\s*:\s*")([^"]+)(")/gi, "$1<redacted>$3");
 }

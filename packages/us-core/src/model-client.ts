@@ -91,6 +91,19 @@ async function* streamModelStub(opts: StreamModelOptions): AsyncGenerator<CodexE
 
   const lastUser = [...opts.messages].reverse().find((message) => message.role === "user")?.content ?? "";
   const hasToolResult = opts.messages.some((message) => message.role === "tool");
+  const mcpPoemTool = opts.tools?.find((tool) => /^mcp_/.test(tool.name) && /(poem|poetry|recite|context)/i.test(tool.name));
+  if (/use\s+(?:the\s+)?(?:poetry|poem|context)?\s*mcp\s+tool|mcp\s+poem|poetry\s+mcp/i.test(lastUser) && !hasToolResult && mcpPoemTool) {
+    yield {
+      type: "tool-call",
+      call: {
+        id: "stub_tool_mcp_poem",
+        name: mcpPoemTool.name,
+        arguments: JSON.stringify({ topic: lastUser }),
+      },
+    };
+    yield { type: "finish", reason: "tool_calls", usage: stubUsage() };
+    return;
+  }
   if (/use\s+ls\s+tool/i.test(lastUser) && !hasToolResult) {
     yield {
       type: "tool-call",

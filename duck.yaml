@@ -1,0 +1,15 @@
+provider:
+  type: codex
+  model: gpt-5.5
+  command: codex
+  sandbox: read-only
+
+rules:
+  - id: no-fake-tests
+    prompt: "Fail if staged changes add tests that only assert current implementation, mock away the behavior under test, use fake expectations, skip assertions, or do not follow Arrange / Act / Assert with visually separated sections."
+
+  - id: runtime-security-regressions
+    prompt: "Fail if staged changes weaken runtime, MCP, webhook, scheduler, auth, secrets, audit, usage, or federation security boundaries, including fail-open behavior, unbounded inputs, missing audit records, token leaks, path traversal, SSRF-prone URLs, or unauthenticated control-plane access."
+
+  - id: no-agent-slop
+    prompt: "Fail if staged changes include TODO placeholders, commented-out code, unrelated rewrites, invented APIs, fixture-only product surfaces presented as real integrations, or vague fallbacks where the system should fail hard."

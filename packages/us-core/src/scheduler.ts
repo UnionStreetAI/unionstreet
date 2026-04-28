@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
+import lockfile from "proper-lockfile";
 import { listProfiles } from "./profile.ts";
 import { readAgentPack, type AgentPack, type AgentPackSchedule } from "./agent-pack.ts";
 import { SCHEDULER_RUNS_PATH } from "./paths.ts";
@@ -72,7 +73,7 @@ export async function dueSchedulerJobs(now = Date.now(), profiles?: string[]): P
     const dueAt = latestDueAt(job, now, runs);
     if (!dueAt) continue;
     const dueKey = `${job.id}@${dueAt}`;
-    if (runs.some((run) => run.jobId === job.id && run.dueAt === dueAt && run.status !== "failed")) continue;
+    if (hasActiveOrCompleteRun(runs, job.id, dueAt)) continue;
     const due = { ...job, dueAt, dueKey };
     out.push(due);
     await writeEvent({
@@ -88,32 +89,34 @@ export async function dueSchedulerJobs(now = Date.now(), profiles?: string[]): P
 }
 
 export async function claimDueSchedulerJobs(now = Date.now(), profiles?: string[]): Promise<SchedulerRun[]> {
-  const due = await dueSchedulerJobs(now, profiles);
-  const claimed: SchedulerRun[] = [];
-  for (const job of due) {
-    const run: SchedulerRun = {
-      id: randomUUID(),
-      jobId: job.id,
-      kind: job.kind,
-      profile: job.profile,
-      dueAt: job.dueAt,
-      dueKey: job.dueKey,
-      status: "claimed",
-      ts: Date.now(),
-      prompt: job.prompt,
-    };
-    await appendSchedulerRun(run);
-    await writeEvent({
-      type: "scheduler.run.claim",
-      actor: job.profile,
-      subject: job.profile,
-      resource: job.id,
-      outcome: "success",
-      payload: { runId: run.id, kind: job.kind, dueAt: job.dueAt, dueKey: job.dueKey },
-    });
-    claimed.push(run);
-  }
-  return claimed;
+  return withSchedulerRunLock(async () => {
+    const due = await dueSchedulerJobs(now, profiles);
+    const claimed: SchedulerRun[] = [];
+    for (const job of due) {
+      const run: SchedulerRun = {
+        id: randomUUID(),
+        jobId: job.id,
+        kind: job.kind,
+        profile: job.profile,
+        dueAt: job.dueAt,
+        dueKey: job.dueKey,
+        status: "claimed",
+        ts: Date.now(),
+        prompt: job.prompt,
+      };
+      await appendSchedulerRun(run);
+      await writeEvent({
+        type: "scheduler.run.claim",
+        actor: job.profile,
+        subject: job.profile,
+        resource: job.id,
+        outcome: "success",
+        payload: { runId: run.id, kind: job.kind, dueAt: job.dueAt, dueKey: job.dueKey },
+      });
+      claimed.push(run);
+    }
+    return claimed;
+  });
 }
 
 export async function executeSchedulerRun(
@@ -201,6 +204,24 @@ async function appendSchedulerRun(run: SchedulerRun): Promise<void> {
   await fs.appendFile(SCHEDULER_RUNS_PATH, JSON.stringify(run) + "\n", { mode: 0o600 });
 }
 
+async function withSchedulerRunLock<T>(fn: () => Promise<T>): Promise<T> {
+  await fs.mkdir(dirname(SCHEDULER_RUNS_PATH), { recursive: true });
+  try {
+    await fs.access(SCHEDULER_RUNS_PATH);
+  } catch {
+    await fs.writeFile(SCHEDULER_RUNS_PATH, "", { mode: 0o600 });
+  }
+  const release = await lockfile.lock(SCHEDULER_RUNS_PATH, {
+    retries: { retries: 50, factor: 1.2, minTimeout: 20, maxTimeout: 500 },
+    stale: 10_000,
+  });
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}
+
 async function defaultSchedulerExecutor(job: DueSchedulerJob, run: SchedulerRun): Promise<SchedulerExecutorResult> {
   const prompt = await runAgentPrompt({
     profile: job.profile,
@@ -270,9 +291,22 @@ function latestDueAt(job: SchedulerJob, now: number, runs: SchedulerRun[]): numb
 }
 
 function latestTerminalRun(jobId: string, runs: SchedulerRun[]): SchedulerRun | undefined {
-  return runs
-    .filter((run) => run.jobId === jobId && (run.status === "complete" || run.status === "claimed" || run.status === "running"))
+  return latestRunsById(runs)
+    .filter((run) => run.jobId === jobId && run.status !== "failed")
     .sort((a, b) => b.dueAt - a.dueAt)[0];
+}
+
+function hasActiveOrCompleteRun(runs: SchedulerRun[], jobId: string, dueAt: number): boolean {
+  return latestRunsById(runs).some((run) => run.jobId === jobId && run.dueAt === dueAt && run.status !== "failed");
+}
+
+function latestRunsById(runs: SchedulerRun[]): SchedulerRun[] {
+  const latest = new Map<string, SchedulerRun>();
+  for (const run of runs) {
+    const current = latest.get(run.id);
+    if (!current || run.ts >= current.ts) latest.set(run.id, run);
+  }
+  return [...latest.values()];
 }
 
 function floorToInterval(value: number, interval: number): number {

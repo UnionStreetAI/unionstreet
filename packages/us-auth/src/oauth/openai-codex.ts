@@ -93,8 +93,9 @@ async function exchangeAuthorizationCode(
 	code: string,
 	verifier: string,
 	redirectUri: string = REDIRECT_URI,
+	fetcher: typeof fetch = fetch,
 ): Promise<TokenResult> {
-	const response = await fetch(TOKEN_URL, {
+	const response = await fetcher(TOKEN_URL, {
 		method: "POST",
 		headers: { "Content-Type": "application/x-www-form-urlencoded" },
 		body: new URLSearchParams({
@@ -131,9 +132,9 @@ async function exchangeAuthorizationCode(
 	};
 }
 
-async function refreshAccessToken(refreshToken: string): Promise<TokenResult> {
+async function refreshAccessToken(refreshToken: string, fetcher: typeof fetch = fetch): Promise<TokenResult> {
 	try {
-		const response = await fetch(TOKEN_URL, {
+		const response = await fetcher(TOKEN_URL, {
 			method: "POST",
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({
@@ -408,8 +409,8 @@ export async function loginOpenAICodex(options: {
 /**
  * Refresh OpenAI Codex OAuth token
  */
-export async function refreshOpenAICodexToken(refreshToken: string): Promise<OAuthCredentials> {
-	const result = await refreshAccessToken(refreshToken);
+export async function refreshOpenAICodexToken(refreshToken: string, fetcher: typeof fetch = fetch): Promise<OAuthCredentials> {
+	const result = await refreshAccessToken(refreshToken, fetcher);
 	if (result.type !== "success") {
 		throw new Error("Failed to refresh OpenAI Codex token");
 	}

@@ -58,6 +58,25 @@ describe("control plane events", () => {
     expect(events[0]?.payload, "The returned newest matching event should preserve non-secret payload data.").toEqual({ n: 3 });
   });
 
+  test("writeEvent_WhenReasonContainsCredentialMaterial_RedactsBeforePersistingAuditLog", async () => {
+    await core.writeEvent({
+      type: "mcp.tool.list",
+      actor: "coo",
+      resource: "mcp:malicious",
+      trace: "trace-events-reason-redact",
+      outcome: "failure",
+      reason: 'http 401: {"authorization":"Bearer sk-test-secret-value","api_key":"ghp_deadbeefcafefeed"}',
+      payload: { server: "malicious" },
+    });
+
+    const events = await core.queryEvents({ trace: "trace-events-reason-redact" });
+
+    expect(
+      events[0]?.reason,
+      "Audit event reasons must redact bearer tokens and API-key shaped strings because upstream MCP/provider errors can echo credentials.",
+    ).toBe('http 401: {"authorization":"<redacted>","api_key":"<redacted>"}');
+  });
+
   test("readEvents_WhenLogContainsCorruptLine_SkipsBadLineAndKeepsReadableEvents", async () => {
     await mkdir(core.EVENTS_DIR, { recursive: true });
     await writeFile(core.EVENTS_PATH, [

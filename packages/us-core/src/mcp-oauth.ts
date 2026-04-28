@@ -45,6 +45,7 @@ export function startMcpOAuth(metadata: McpOAuthMetadata): McpOAuthStart {
 export async function exchangeMcpOAuthCallback(
   started: McpOAuthStart,
   callbackOrCode: string,
+  fetcher: typeof fetch = fetch,
 ): Promise<McpOAuthTokenResponse> {
   const { code, state } = parseCallbackOrCode(callbackOrCode);
   if (!code) throw new Error("OAuth callback did not include an authorization code.");
@@ -59,7 +60,7 @@ export async function exchangeMcpOAuthCallback(
   });
   if (started.metadata.clientSecret) body.set("client_secret", started.metadata.clientSecret);
 
-  const response = await fetch(started.metadata.tokenUrl, {
+  const response = await fetcher(started.metadata.tokenUrl, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body,

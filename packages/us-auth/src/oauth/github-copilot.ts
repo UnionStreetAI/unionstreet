@@ -109,8 +109,8 @@ export function getGitHubCopilotBaseUrl(token?: string, enterpriseDomain?: strin
 	return "https://api.individual.githubcopilot.com";
 }
 
-async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
-	const response = await fetch(url, init);
+async function fetchJson(url: string, init: RequestInit, fetcher: typeof fetch = fetch): Promise<unknown> {
+	const response = await fetcher(url, init);
 	if (!response.ok) {
 		const text = await response.text();
 		throw new Error(`${response.status} ${response.statusText}: ${text}`);
@@ -259,6 +259,7 @@ async function pollForGitHubAccessToken(
 export async function refreshGitHubCopilotToken(
 	refreshToken: string,
 	enterpriseDomain?: string,
+	fetcher: typeof fetch = fetch,
 ): Promise<OAuthCredentials> {
 	const domain = enterpriseDomain || "github.com";
 	const urls = getUrls(domain);
@@ -269,7 +270,7 @@ export async function refreshGitHubCopilotToken(
 			Authorization: `Bearer ${refreshToken}`,
 			...COPILOT_HEADERS,
 		},
-	});
+	}, fetcher);
 
 	if (!raw || typeof raw !== "object") {
 		throw new Error("Invalid Copilot token response");

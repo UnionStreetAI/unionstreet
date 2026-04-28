@@ -58,7 +58,7 @@ export async function loadProfileRuntime(opts: {
   const tokenCred =
     provider === "codex" || provider === "openai-codex"
       ? auth.merged.providers.codex
-      : auth.merged.providers[provider] ?? auth.merged.providers.codex;
+      : auth.merged.providers[provider];
   const oauth =
     tokenCred?.kind === "oauth"
       ? (tokenCred as OAuthCred)

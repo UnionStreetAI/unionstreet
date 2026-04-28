@@ -10,6 +10,7 @@ import { STARTER_TOOLS, toolByName, toolDefinitions, type UsToolContext } from "
 import { streamModel } from "./model-client.ts";
 import { writeEvent } from "./events.ts";
 import { writeUsageRecord } from "./usage.ts";
+import { resolveMcpToolsForAgent } from "./mcp-client.ts";
 
 interface ProfileConfigYaml {
   model?: { provider?: string; id?: string };
@@ -59,7 +60,8 @@ export async function runAgentPrompt(options: AgentPromptOptions): Promise<Agent
   const trace = options.trace ?? createLashTrace();
   const runId = `${profile}:${session.sessionId}`;
   const chain = await readModelChain(profile);
-  const tools = STARTER_TOOLS;
+  const cwd = options.cwd ?? process.cwd();
+  const tools = [...STARTER_TOOLS, ...(await resolveMcpToolsForAgent(profile, cwd))];
   const toolDefs = toolDefinitions(tools);
   const toolMap = toolByName(tools);
   const messages: ChatMessage[] = systemPrompt ? [{ role: "system", content: systemPrompt }] : [];
@@ -178,7 +180,7 @@ export async function runAgentPrompt(options: AgentPromptOptions): Promise<Agent
           payload: { runId, step, toolCallId: call.id, name: call.name },
         });
         const result = await executeTool(call, {
-          cwd: options.cwd ?? process.cwd(),
+          cwd,
           callingPeer: profile,
           trace,
         }, toolMap);

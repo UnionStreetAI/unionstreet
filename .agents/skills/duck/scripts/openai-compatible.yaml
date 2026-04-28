@@ -1,0 +1,10 @@
+provider:
+  type: openai-compatible
+  name: openai
+  baseURL: https://api.openai.com/v1
+  apiKeyEnv: OPENAI_API_KEY
+  model: gpt-4.1-mini
+
+rules:
+  - id: no-agent-slop
+    prompt: "Fail if staged changes include TODO placeholders, fake tests, invented APIs, or unrelated rewrites."

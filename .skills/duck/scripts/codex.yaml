@@ -1,0 +1,9 @@
+provider:
+  type: codex
+  model: gpt-5.5
+  command: codex
+  sandbox: read-only
+
+rules:
+  - id: no-agent-slop
+    prompt: "Fail if staged changes include TODO placeholders, fake tests, invented APIs, or unrelated rewrites."

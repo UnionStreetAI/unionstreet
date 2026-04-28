@@ -27,7 +27,7 @@ describe("OAuth provider registry", () => {
     expect(
       providers,
       "The registry should expose every built-in provider needed by CLI auth status and provider pickers.",
-    ).toEqual(["antigravity", "anthropic", "github-copilot", "google-gemini-cli", "openai-codex"]);
+    ).toEqual(["anthropic", "github-copilot", "google-antigravity", "google-gemini-cli", "openai-codex"]);
     expect(info, "Deprecated provider info should remain consistent with the main registry while older CLI code exists.").toEqual(providers);
   });
 

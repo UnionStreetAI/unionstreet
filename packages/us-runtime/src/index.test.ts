@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { createHmac } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -145,6 +146,122 @@ test("POSTAgentPrompt_WhenPromptIsMissing_ReturnsActionableBadRequest", async ()
   expect(body.error, "Missing prompt errors must use a stable code for dashboard validation.").toBe("missing_prompt");
 });
 
+test("POSTAgentPrompt_WhenBodyIsMalformedJson_ReturnsHardBadRequest", async () => {
+  const promptRoute = "/api/agents/coo/prompt";
+
+  const response = await fetchHandler(new Request(`http://runtime.test${promptRoute}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{not-json",
+  }));
+  const body = await response.json() as any;
+
+  expectStatus(response, 400, "malformed JSON must fail before the runtime treats the prompt as missing");
+  expect(body.error, "Malformed request bodies must have their own stable error code for clients and logs.").toBe("malformed_json");
+  expect(body.message, "Malformed JSON errors must include parser context so operators can debug bad webhook/prompt clients.").toContain("not valid JSON");
+});
+
+test("POSTAgentPrompt_WhenContentLengthExceedsLimit_ReturnsPayloadTooLargeBeforePromptRun", async () => {
+  const promptRoute = "/api/agents/coo/prompt";
+
+  const response = await fetchHandler(new Request(`http://runtime.test${promptRoute}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "content-length": "1000001",
+    },
+    body: JSON.stringify({ prompt: "this should never run" }),
+  }));
+  const body = await response.json() as any;
+
+  expectStatus(response, 413, "oversized prompt requests must fail before the agent loop starts");
+  expect(body.error, "Oversized request bodies must use a stable error code for API clients.").toBe("body_too_large");
+});
+
+test("GETAgentDetail_WhenProfilePathTraversalIsRequested_ReturnsInvalidProfileWithoutDiskAccess", async () => {
+  const traversalRoute = "/api/agents/%2E%2E%2Fauth-profiles";
+
+  const { response, body } = await fetchJson(traversalRoute);
+
+  expectStatus(response, 400, "profile route segments must be validated before any profile path is resolved");
+  expect(body.error, "Invalid profile route errors must be stable so dashboard clients can distinguish bad input from missing agents.").toBe("invalid_profile");
+});
+
+test("GETAgentDetail_WhenProfileDoesNotExist_ReturnsProfileNotFoundInsteadOfInternalError", async () => {
+  const route = "/api/agents/ghost-agent";
+
+  const { response, body } = await fetchJson(route);
+
+  expectStatus(response, 404, "unknown but syntactically valid profiles should not crash the runtime handler");
+  expect(body.error, "Missing profiles must return a specific error code for control-plane clients.").toBe("profile_not_found");
+});
+
+test("GETRuntimes_WhenProfileFilterContainsTraversal_ReturnsInvalidProfileBeforeResolvingContracts", async () => {
+  const route = "/api/runtimes?profile=coo,%2E%2E%2Fauth-profiles";
+
+  const { response, body } = await fetchJson(route);
+
+  expectStatus(response, 400, "runtime list profile filters must be validated before resolving workspace paths");
+  expect(body.error, "Invalid runtime profile filters must use the same stable invalid_profile code as detail routes.").toBe("invalid_profile");
+});
+
+test("GETSessions_WhenProfileFilterTargetsUnknownAgent_ReturnsProfileNotFound", async () => {
+  const route = "/api/sessions?profile=ghost-agent";
+
+  const { response, body } = await fetchJson(route);
+
+  expectStatus(response, 404, "sessions API must not silently create or inspect unknown profile paths");
+  expect(body.error, "Unknown sessions profile filters must use the stable profile_not_found code.").toBe("profile_not_found");
+});
+
+test("GETMemoryAnchors_WhenProfileFilterContainsTraversal_ReturnsInvalidProfileBeforeOpeningStore", async () => {
+  const route = "/api/memory/anchors?profile=%2E%2E%2Fauth-profiles";
+
+  const { response, body } = await fetchJson(route);
+
+  expectStatus(response, 400, "memory anchor profile filters must be validated before opening profile-scoped storage");
+  expect(body.error, "Invalid memory profile filters must use the stable invalid_profile code.").toBe("invalid_profile");
+});
+
+test("GETSchedulerJobs_WhenProfileFilterTargetsUnknownAgent_ReturnsProfileNotFound", async () => {
+  const route = "/api/scheduler/jobs?profile=ghost-agent";
+
+  const { response, body } = await fetchJson(route);
+
+  expectStatus(response, 404, "scheduler profile filters must fail closed for unknown agents instead of returning empty work");
+  expect(body.error, "Unknown scheduler profile filters must use the stable profile_not_found code.").toBe("profile_not_found");
+});
+
+test("POSTSchedulerTick_WhenBodyProfilesContainTraversal_ReturnsInvalidProfileBeforeClaimingWork", async () => {
+  const now = Date.UTC(2026, 3, 27, 9, 45);
+
+  const { response, body } = await postJson("/api/scheduler/tick", {
+    now,
+    profiles: ["vp-eng", "../auth-profiles"],
+  });
+
+  expectStatus(response, 400, "scheduler tick body profile filters must be validated before any run can be claimed");
+  expect(body.error, "Invalid scheduler body profiles must use the stable invalid_profile code.").toBe("invalid_profile");
+});
+
+test("RuntimeApi_WhenBearerTokenIsConfigured_RequiresAuthorizationOnApiRoutesButNotHealth", async () => {
+  const secureHandler = runtime.createRuntimeFetchHandler({ cwd: workdir, authToken: "runtime-secret" });
+
+  const health = await secureHandler(new Request("http://runtime.test/health"));
+  const unauthorized = await secureHandler(new Request("http://runtime.test/api/runtime"));
+  const authorized = await secureHandler(new Request("http://runtime.test/api/runtime", {
+    headers: { authorization: "Bearer runtime-secret" },
+  }));
+  const unauthorizedBody = await unauthorized.json() as any;
+  const authorizedBody = await authorized.json() as any;
+
+  expectStatus(health, 200, "health must remain unauthenticated so local supervisors can detect process liveness");
+  expectStatus(unauthorized, 401, "configured runtime API auth must reject missing bearer tokens");
+  expect(unauthorizedBody.error, "Runtime auth failures must use a stable unauthorized code.").toBe("unauthorized");
+  expectStatus(authorized, 200, "configured runtime API auth must accept the exact bearer token");
+  expect(authorizedBody.usHome, "Authorized runtime responses must still expose the same live control-plane state.").toBe(usHome);
+});
+
 test("GETRuntimes_WhenNoProfileFilterIsProvided_ReturnsEveryRuntimeContract", async () => {
   const runtimesRoute = "/api/runtimes";
 
@@ -210,6 +327,21 @@ test("GETEvents_WhenFilteredByActorTypeAndTrace_ReturnsOnlyMatchingAuditEvents",
   expect(body.events[0].actor, "Filtered events must preserve the requested actor.").toBe("vp-eng");
   expect(body.events[0].type, "Filtered events must preserve the requested event type.").toBe("audit.test");
   expect(body.events[0].trace, "Filtered events must preserve the requested trace for Lash/run correlation.").toBe(trace);
+});
+
+test("GETEvents_WhenLimitIsHuge_ClampsResultSetToRuntimeMaximum", async () => {
+  const trace = "trace-events-limit";
+  for (let i = 0; i < 1_020; i++) {
+    await core.writeEvent({ type: "audit.test", actor: "coo", trace, outcome: "info", payload: { index: i } });
+  }
+
+  const { response, body } = await fetchJson(`/api/events?actor=coo&type=audit.test&trace=${trace}&limit=999999`);
+
+  expectStatus(response, 200, "events queries with huge limits should still succeed");
+  expect(
+    body.events,
+    "Runtime event queries must clamp untrusted limits so one dashboard/API request cannot force an unbounded response.",
+  ).toHaveLength(1_000);
 });
 
 test("GETEventsStream_WhenMatchingEventAlreadyExists_EmitsServerSentEventFrame", async () => {
@@ -383,6 +515,74 @@ test("POSTWebhookIngress_WhenActorHeaderAndJsonPayloadAreProvided_RecordsSanitiz
   ).toBe(true);
 });
 
+test("POSTWebhookIngress_WhenSourceContainsTraversal_ReturnsInvalidSourceBeforeAuditWrite", async () => {
+  const response = await fetchHandler(new Request("http://runtime.test/api/webhooks/%2E%2E%2Fgithub", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ subject: "repo:bad-source", action: "opened" }),
+  }));
+  const body = await response.json() as any;
+  const events = await fetchJson("/api/events?type=webhook.received&limit=1000");
+
+  expectStatus(response, 400, "webhook source route segments must be validated before audit/resource construction");
+  expect(body.error, "Invalid webhook source errors must use a stable code.").toBe("invalid_webhook_source");
+  expect(
+    events.body.events.some((event: any) => event.payload?.body?.subject === "repo:bad-source"),
+    "Invalid webhook sources must not create successful ingress audit events.",
+  ).toBe(false);
+});
+
+test("POSTWebhookIngress_WhenSourceSecretIsConfigured_RejectsMissingSignatureBeforeAuditWrite", async () => {
+  const previous = process.env.US_WEBHOOK_GITHUB_SECRET;
+  process.env.US_WEBHOOK_GITHUB_SECRET = "github-webhook-secret";
+  try {
+    const response = await fetchHandler(new Request("http://runtime.test/api/webhooks/github", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ subject: "repo:unsigned-webhook", action: "opened" }),
+    }));
+    const body = await response.json() as any;
+    const events = await fetchJson("/api/events?type=webhook.received&limit=1000");
+
+    expectStatus(response, 401, "webhook sources with configured secrets must reject unsigned payloads");
+    expect(body.error, "Unsigned protected webhooks must use a stable error code.").toBe("webhook_signature_required");
+    expect(
+      events.body.events.some((event: any) => event.payload?.body?.subject === "repo:unsigned-webhook"),
+      "Rejected webhook payloads must not be written as successful ingress audit events.",
+    ).toBe(false);
+  } finally {
+    if (previous === undefined) delete process.env.US_WEBHOOK_GITHUB_SECRET;
+    else process.env.US_WEBHOOK_GITHUB_SECRET = previous;
+  }
+});
+
+test("POSTWebhookIngress_WhenSourceSecretAndValidSignatureAreProvided_RecordsAuditEvent", async () => {
+  const previous = process.env.US_WEBHOOK_GITHUB_SECRET;
+  process.env.US_WEBHOOK_GITHUB_SECRET = "github-webhook-secret";
+  const rawBody = JSON.stringify({ subject: "repo:union-street", action: "closed" });
+  const signature = createHmac("sha256", "github-webhook-secret").update(rawBody).digest("hex");
+  try {
+    const response = await fetchHandler(new Request("http://runtime.test/api/webhooks/github", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-us-signature": `sha256=${signature}`,
+        "x-union-street-actor": "vp-eng",
+      },
+      body: rawBody,
+    }));
+    const body = await response.json() as any;
+
+    expectStatus(response, 202, "webhook sources with configured secrets must accept valid HMAC SHA-256 signatures");
+    expect(body.event.type, "Accepted signed webhooks must still persist typed ingress events.").toBe("webhook.received");
+    expect(body.event.actor, "Signed webhooks must preserve the explicit runtime actor header for audit attribution.").toBe("vp-eng");
+    expect(body.event.payload.body.action, "Signed webhook payloads must preserve parsed JSON for downstream routing.").toBe("closed");
+  } finally {
+    if (previous === undefined) delete process.env.US_WEBHOOK_GITHUB_SECRET;
+    else process.env.US_WEBHOOK_GITHUB_SECRET = previous;
+  }
+});
+
 test("GETUnknownApiRoute_WhenPathIsUnsupported_ReturnsStable404Json", async () => {
   const unknownRoute = "/api/nope";
 
@@ -399,6 +599,10 @@ test("OPTIONSApiRoute_WhenBrowserPreflightArrives_ReturnsCorsHeaders", async () 
 
   expectStatus(response, 204, "CORS preflight should succeed for browser dashboard clients");
   expect(response.headers.get("access-control-allow-origin"), "Runtime API must allow browser clients from the local dashboard origin.").toBe("*");
+  expect(
+    response.headers.get("access-control-allow-headers"),
+    "CORS preflight must allow signed webhook and runtime auth headers used by browser/control-plane clients.",
+  ).toContain("x-us-signature");
 });
 
 test("startRuntimeServer_WhenStartedOnEphemeralPort_OpensRealHttpListener", async () => {
@@ -409,6 +613,25 @@ test("startRuntimeServer_WhenStartedOnEphemeralPort_OpensRealHttpListener", asyn
 
     expectStatus(response, 200, "runtime server should expose /health over a real HTTP listener");
     expect(body.ok, "Real HTTP /health response must match the in-process fetch handler contract.").toBe(true);
+  } finally {
+    handle.stop();
+  }
+});
+
+test("startRuntimeServer_WhenAuthTokenIsConfigured_ProtectsRealHttpApiRoutes", async () => {
+  const handle = runtime.startRuntimeServer({ port: 0, hostname: "127.0.0.1", cwd: workdir, authToken: "real-runtime-secret" });
+  try {
+    const unauthorized = await fetch(`${handle.url}/api/runtime`);
+    const authorized = await fetch(`${handle.url}/api/runtime`, {
+      headers: { authorization: "Bearer real-runtime-secret" },
+    });
+    const unauthorizedBody = await unauthorized.json() as any;
+    const authorizedBody = await authorized.json() as any;
+
+    expectStatus(unauthorized, 401, "real HTTP runtime listeners must enforce the same bearer gate as the in-process handler");
+    expect(unauthorizedBody.error, "Real HTTP auth failures must use the runtime unauthorized error code.").toBe("unauthorized");
+    expectStatus(authorized, 200, "real HTTP runtime listeners must pass authorized dashboard/control-plane requests");
+    expect(authorizedBody.usHome, "Authorized real HTTP runtime responses must expose the active control-plane state.").toBe(usHome);
   } finally {
     handle.stop();
   }
