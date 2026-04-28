@@ -8,8 +8,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircleDot,
-  Command,
   Cpu,
   FileCheck2,
   Folder,
@@ -37,6 +35,7 @@ import {
 import { type FormEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import { AgentFleet } from "./components/agent-fleet";
+import { CommandCenter } from "./components/command-center";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
@@ -352,7 +351,7 @@ const navSections = [
   {
     label: "Control",
     items: [
-      { label: "Overview", icon: Activity },
+      { label: "Command Center", icon: Activity },
       { label: "Chat", icon: MessageSquare },
     ],
   },
@@ -530,10 +529,16 @@ function useRuntimeDashboard(): DashboardData {
 
 export function App() {
   const [theme, setTheme] = useState<Theme>("dark");
-  const [activeTab, setActiveTab] = useState("Overview");
+  const [activeTab, setActiveTab] = useState("Command Center");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [chatAgentId, setChatAgentId] = useState<string | undefined>(undefined);
   const data = useRuntimeDashboard();
   const { agents, statusCounts } = data;
+
+  function openChatForAgent(agentId: string) {
+    setChatAgentId(agentId);
+    setActiveTab("Chat");
+  }
 
   return (
     <div className={`dashboard ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-theme={theme}>
@@ -617,7 +622,7 @@ export function App() {
 
         <section className="content">
           {activeTab === "Chat" ? (
-            <ChatPage agents={agents} modelGroups={data.modelGroups} />
+            <ChatPage agents={agents} modelGroups={data.modelGroups} initialAgentId={chatAgentId} />
           ) : activeTab === "Calendar" ? (
             <SchedulePage agents={agents} jobs={data.schedulerJobs} runs={data.schedulerRuns} reload={data.reload} />
           ) : activeTab === "Reports" ? (
@@ -641,167 +646,19 @@ export function App() {
           ) : activeTab === "Doctor" ? (
             <DoctorPage snapshot={data.snapshot} agents={agents} events={data.rawEvents} />
           ) : (
-            <>
-          <div className="page-head">
-            <div>
-              <p className="eyebrow">OIDC-native agent harness</p>
-              <h1>Head node management</h1>
-              <p className="lede">{data.snapshot.connected ? "Live operator view into federation, Lash threads, MCP grants, and environment placement." : `Runtime unavailable at ${data.snapshot.baseUrl}: ${data.snapshot.error ?? "not connected"}`}</p>
-            </div>
-            <div className="actions">
-              <Button variant="secondary"><Terminal size={15} />Open TUI</Button>
-              <Button variant="laser"><Command size={15} />New session</Button>
-            </div>
-          </div>
-
-          <Tabs>
-            <TabsList>
-              {["Live", "Federation", "Environments"].map((label) => (
-                <TabsTrigger key={label} active={label === "Live"}>{label}</TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-          <section className="kpi-grid">
-            <Kpi label="Agents" value={String(agents.length)} delta={`${statusCounts.live} live`} />
-            <Kpi label="Lash threads" value={String(data.rawEvents.filter((event) => event.threadId).length)} delta="from live events" />
-            <Kpi label="MCP grants" value={String(data.plugins.filter((plugin) => plugin.category === "MCP").length)} delta="resolved live" />
-            <Kpi label="Environments" value={String(data.environments.length)} delta="runtime contracts" />
-          </section>
-
-          <section className="dashboard-grid">
-            <Card className="span-8">
-              <CardHeader>
-                <div>
-                  <CardTitle>Agent fleet</CardTitle>
-                  <CardDescription>Profiles resolved through local federation and runtime config.</CardDescription>
-                </div>
-                <Badge tone="laser">live</Badge>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Agent</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Model</TableHead>
-                  <TableHead>Environment</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {agents.map((agent) => (
-                      <TableRow key={agent.id}>
-                        <TableCell className="name">@{agent.id}</TableCell>
-                        <TableCell>{agent.title}</TableCell>
-                        <TableCell>{agent.model}</TableCell>
-                        <TableCell>{agent.runtime}</TableCell>
-                        <TableCell><StatusBadge status={agent.status} /></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            <Card className="span-4">
-              <CardHeader>
-                <div>
-                  <CardTitle>Org graph</CardTitle>
-                  <CardDescription>Work flows down. Truth flows up.</CardDescription>
-                </div>
-                <Network size={16} />
-              </CardHeader>
-              <CardContent>
-                <OrgGraph agents={agents} />
-              </CardContent>
-            </Card>
-
-            <Card className="span-5">
-              <CardHeader>
-                <div>
-                  <CardTitle>MCP grants</CardTitle>
-                  <CardDescription>Visible capability envelopes by group.</CardDescription>
-                </div>
-                <McpIcon size={16} />
-              </CardHeader>
-              <CardContent className="grant-list">
-                {data.plugins.filter((plugin) => plugin.category === "MCP").map((grant) => (
-                  <div className="grant-row" key={grant.name}>
-                    <div>
-                      <div className="row-title">{grant.name}</div>
-                      <div className="row-sub">{grant.scope}</div>
-                    </div>
-                    <div className="row-meta">{grant.status}</div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="span-4">
-              <CardHeader>
-                <div>
-                  <CardTitle>Environments</CardTitle>
-                  <CardDescription>Compute, storage, ingress contract.</CardDescription>
-                </div>
-                <LaptopMinimal size={16} />
-              </CardHeader>
-              <CardContent className="runtime-list">
-                {data.environments.map((runtime) => (
-                  <div className="runtime-row" key={runtime.provider}>
-                    <LaptopMinimal size={15} />
-                    <div>
-                      <div className="row-title">{runtime.provider}</div>
-                      <div className="row-sub">{runtime.compute} · {runtime.storage}</div>
-                    </div>
-                    <Badge tone={runtime.state === "ready" ? "success" : "muted"}>{runtime.state}</Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="span-3">
-              <CardHeader>
-                <div>
-                  <CardTitle>Lash flow</CardTitle>
-                  <CardDescription>Delegation and reporting spine.</CardDescription>
-                </div>
-                <Workflow size={16} />
-              </CardHeader>
-              <CardContent>
-                <div className="flow-card">
-                  <div><CircleDot size={14} /> delegate</div>
-                  <div className="flow-line" />
-                  <div><CircleDot size={14} /> wake</div>
-                  <div className="flow-line" />
-                  <div><CircleDot size={14} /> report</div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="span-12">
-              <CardHeader>
-                <div>
-                  <CardTitle>Event stream</CardTitle>
-                  <CardDescription>Local SSE-ready feed from the head node.</CardDescription>
-                </div>
-                <PlugZap size={16} />
-              </CardHeader>
-              <CardContent>
-                <div className="event-feed">
-                  {data.events.map((event, index) => (
-                    <div className="event-row" key={`${event.time}-${event.actor}-${event.event}-${index}`}>
-                      <span>{event.time}</span>
-                      <b>@{event.actor}</b>
-                      <Badge tone={event.event === "blocked" ? "warning" : event.event === "delegate" ? "laser" : "default"}>{event.event}</Badge>
-                      <p>{event.detail}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-            </>
+            <CommandCenter
+              agents={agents}
+              modelGroups={data.modelGroups}
+              events={data.events}
+              rawEvents={data.rawEvents}
+              connected={data.snapshot.connected}
+              runtimeError={data.snapshot.error}
+              runtimeBaseUrl={data.snapshot.baseUrl}
+              statusCounts={statusCounts}
+              onOpenChat={openChatForAgent}
+              onOpenAgents={() => setActiveTab("Agents")}
+              onOpenAudit={() => setActiveTab("Audit Logs")}
+            />
           )}
         </section>
       </main>
@@ -1065,8 +922,8 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: DashboardModelGroup[] }) {
-  const [selectedAgentId, setSelectedAgentId] = useState("coo");
+function ChatPage({ agents, modelGroups, initialAgentId }: { agents: Agent[]; modelGroups: DashboardModelGroup[]; initialAgentId?: string }) {
+  const [selectedAgentId, setSelectedAgentId] = useState(initialAgentId ?? "coo");
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   const [agentModelGroups, setAgentModelGroups] = useState<DashboardModelGroup[]>(modelGroups);
   const activeModelGroups = agentModelGroups.length ? agentModelGroups : modelGroups;
@@ -1080,6 +937,12 @@ function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: Dashb
   const lastSyncedAgentKey = useRef<string | undefined>(undefined);
   const directReports = selectedAgent ? agents.filter((agent) => agent.manager === selectedAgent.id).length : 0;
   const workspaceName = selectedAgent?.runtime.split("/")[0] ?? "local";
+
+  useEffect(() => {
+    if (initialAgentId && agents.some((agent) => agent.id === initialAgentId)) {
+      setSelectedAgentId(initialAgentId);
+    }
+  }, [agents, initialAgentId]);
 
   useEffect(() => {
     if (!selectedAgent) return;
@@ -1808,7 +1671,7 @@ function PluginsPage({ plugins }: { plugins: PluginRow[] }) {
         </div>
         <div className="actions">
           <Button variant="secondary"><Plug size={15} />Install local</Button>
-          <Button variant="laser"><Command size={15} />Open marketplace</Button>
+          <Button variant="laser"><PlugZap size={15} />Open marketplace</Button>
         </div>
       </div>
 
@@ -2722,29 +2585,4 @@ function Kpi({ label, value, delta }: { label: string; value: string; delta: str
 function StatusBadge({ status }: { status: AgentStatus }) {
   const tone = status === "live" ? "success" : status === "blocked" ? "warning" : "muted";
   return <Badge tone={tone}><span className={`status-dot ${status}`} />{status}</Badge>;
-}
-
-function OrgGraph({ agents }: { agents: Agent[] }) {
-  const roots = agents.filter((agent) => !agent.manager);
-  const top = roots[0];
-  return (
-    <div className="org-graph">
-      <div className="org-node root">@{top?.id ?? "none"}</div>
-      <div className="org-branches">
-        {agents.filter((agent) => agent.manager === top?.id).slice(0, 6).map((agent) => (
-          <div className="org-branch" key={agent.id}>
-            <div className="org-line" />
-            <div className={agent.status === "live" ? "org-node active" : "org-node"}>@{agent.id}</div>
-            {agents.some((candidate) => candidate.manager === agent.id) && (
-              <div className="org-children">
-                {agents.filter((candidate) => candidate.manager === agent.id).slice(0, 3).map((child) => (
-                  <div className="org-node small" key={child.id}>@{child.id}</div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
