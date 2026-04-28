@@ -45,10 +45,19 @@ export function ModelSelector({
     const active = current ? [{ group: current.group, model: current.model }] : [];
     return uniqueRows([...active, ...marked]).slice(0, 6);
   }, [groups, current]);
+  const visibleRecent = recent.length > 1 ? recent : [];
+  const recentKeys = useMemo(() => new Set(visibleRecent.map(rowKey)), [visibleRecent]);
 
   const filteredGroups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return groups;
+    if (!q) {
+      return groups
+        .map((group) => ({
+          ...group,
+          models: group.models.filter((model) => !recentKeys.has(rowKey({ group, model }))),
+        }))
+        .filter((group) => group.models.length > 0);
+    }
     return groups
       .map((group) => ({
         ...group,
@@ -59,7 +68,7 @@ export function ModelSelector({
         }),
       }))
       .filter((group) => group.models.length > 0);
-  }, [groups, query]);
+  }, [groups, query, recentKeys]);
 
   function choose(next: ModelSelection) {
     onChange(next);
@@ -71,7 +80,7 @@ export function ModelSelector({
     <div className={`model-selector ${compact ? "compact" : ""}`}>
       <button className="model-trigger" type="button" onClick={() => setOpen((next) => !next)}>
         <Zap size={compact ? 15 : 16} />
-        <span>{current ? normalizedModelName(current.model) : value.id}</span>
+        <span>{current ? normalizedModelName(current.model) : formatModelId(value.id)}</span>
         {current && <em>{normalizedProviderName(current.group)}</em>}
         <ChevronDown size={15} />
       </button>
@@ -83,10 +92,10 @@ export function ModelSelector({
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search models" autoFocus />
           </label>
 
-          {recent.length > 0 && (
+          {visibleRecent.length > 0 && (
             <ModelSection
               title="Recent"
-              rows={recent}
+              rows={visibleRecent}
               value={value}
               defaultValue={defaultValue}
               onChoose={choose}
@@ -159,11 +168,15 @@ function findModel(groups: DashboardModelGroup[], value: ModelSelection) {
 function uniqueRows(rows: Array<{ group: DashboardModelGroup; model: DashboardModel }>) {
   const seen = new Set<string>();
   return rows.filter((row) => {
-    const key = `${row.group.id}\u0000${row.model.id}`;
+    const key = rowKey(row);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function rowKey(row: { group: DashboardModelGroup; model: DashboardModel }) {
+  return `${row.group.id}\u0000${row.model.id}`;
 }
 
 function sameModel(a: ModelSelection, b: ModelSelection) {
@@ -172,6 +185,10 @@ function sameModel(a: ModelSelection, b: ModelSelection) {
 
 function normalizedModelName(model: DashboardModel): string {
   const raw = model.name && model.name !== model.id ? model.name : model.id;
+  return formatModelId(raw);
+}
+
+function formatModelId(raw: string): string {
   const leaf = raw.split("/").filter(Boolean).at(-1) ?? raw;
   return titleWords(leaf.replace(/[_-]+/g, " ").replace(/\b(\d+)b\b/gi, "$1B").replace(/\bit\b/gi, "IT"))
     .replace(/\bGpt\b/g, "GPT")

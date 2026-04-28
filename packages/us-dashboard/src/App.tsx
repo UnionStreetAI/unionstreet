@@ -73,6 +73,8 @@ export interface Agent {
   manager?: string;
   group: string;
   model: string;
+  modelProvider?: string;
+  modelId?: string;
   runtime: string;
   status: AgentStatus;
   activeThread?: string;
@@ -784,8 +786,8 @@ export function App() {
               </CardHeader>
               <CardContent>
                 <div className="event-feed">
-                  {data.events.map((event) => (
-                    <div className="event-row" key={`${event.time}-${event.actor}-${event.event}`}>
+                  {data.events.map((event, index) => (
+                    <div className="event-row" key={`${event.time}-${event.actor}-${event.event}-${index}`}>
                       <span>{event.time}</span>
                       <b>@{event.actor}</b>
                       <Badge tone={event.event === "blocked" ? "warning" : event.event === "delegate" ? "laser" : "default"}>{event.event}</Badge>
@@ -804,10 +806,11 @@ export function App() {
   );
 }
 
-function modelSelectionForAgent(agent: Agent | undefined): ModelSelection {
+function modelSelectionForAgent(agent: Agent | undefined, groups: DashboardModelGroup[]): ModelSelection {
   if (!agent) return { provider: "codex", id: "gpt-5.4" };
+  if (agent.modelProvider && agent.modelId) return { provider: agent.modelProvider, id: agent.modelId };
   const wanted = agent.model.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  for (const group of modelGroups) {
+  for (const group of groups) {
     const model = group.models.find((candidate) => candidate.id === wanted || candidate.name?.toLowerCase() === agent.model.toLowerCase());
     if (model) return { provider: group.id, id: model.id };
   }
@@ -815,8 +818,8 @@ function modelSelectionForAgent(agent: Agent | undefined): ModelSelection {
 }
 
 function agentFromRuntime(snapshot: RuntimeAgentSnapshot): Agent {
-  const provider = snapshot.pack?.model?.primary?.provider ?? "codex";
-  const modelId = snapshot.pack?.model?.primary?.id ?? "gpt-5.4";
+  const provider = snapshot.model?.provider ?? snapshot.pack?.model?.primary?.provider ?? "codex";
+  const modelId = snapshot.model?.id ?? snapshot.pack?.model?.primary?.id ?? "gpt-5.4";
   const manager = cleanProfile(snapshot.principal?.manager);
   const groups = snapshot.principal?.groups ?? snapshot.pack?.identity?.groups ?? [];
   const roles = snapshot.principal?.roles ?? snapshot.pack?.identity?.roles ?? [];
@@ -827,6 +830,8 @@ function agentFromRuntime(snapshot: RuntimeAgentSnapshot): Agent {
     ...(manager ? { manager } : {}),
     group: groups[0] ?? roles[0] ?? "agents",
     model: normalizedDisplayModel(`${provider}/${modelId}`),
+    modelProvider: provider,
+    modelId,
     runtime: runtimeName,
     status: snapshot.runtime?.warnings?.length ? "blocked" : snapshot.sessions?.length ? "live" : "idle",
     activeThread: snapshot.pack?.lash?.thread,
@@ -875,13 +880,18 @@ function memoryStoresFromRuntime(agents: RuntimeAgentSnapshot[], memory: Runtime
 function modelGroupsFromRuntime(agents: RuntimeAgentSnapshot[]): DashboardModelGroup[] {
   const byProvider = new Map<string, DashboardModelGroup>();
   for (const agent of agents) {
-    const provider = agent.pack?.model?.primary?.provider ?? "codex";
-    const id = agent.pack?.model?.primary?.id ?? "gpt-5.4";
+    const chain = agent.modelChain?.length ? agent.modelChain : [
+      agent.model ?? agent.pack?.model?.primary ?? { provider: "codex", id: "gpt-5.4" },
+      ...(agent.pack?.model?.fallback ?? []),
+    ];
+    const primary = chain[0] ?? { provider: "codex", id: "gpt-5.4" };
+    const provider = primary.provider ?? "codex";
+    const id = primary.id ?? "gpt-5.4";
     const group = byProvider.get(provider) ?? { id: provider, label: normalizedProviderLabel(provider), models: [] };
     if (!group.models.some((model) => model.id === id)) {
       group.models.push({ id, name: normalizedDisplayModel(id), recent: true });
     }
-    for (const fallback of agent.pack?.model?.fallback ?? []) {
+    for (const fallback of chain.slice(1)) {
       const fallbackProvider = fallback.provider ?? provider;
       const fallbackId = fallback.id ?? "";
       if (!fallbackId) continue;
@@ -920,8 +930,8 @@ function environmentsFromRuntime(snapshot: RuntimeSnapshot): EnvironmentRow[] {
 function providersFromRuntime(agents: RuntimeAgentSnapshot[]): ProviderRow[] {
   const modelsByProvider = new Map<string, Set<string>>();
   for (const agent of agents) {
-    const provider = agent.pack?.model?.primary?.provider ?? "codex";
-    const id = agent.pack?.model?.primary?.id ?? "gpt-5.4";
+    const provider = agent.model?.provider ?? agent.pack?.model?.primary?.provider ?? "codex";
+    const id = agent.model?.id ?? agent.pack?.model?.primary?.id ?? "gpt-5.4";
     const set = modelsByProvider.get(provider) ?? new Set<string>();
     set.add(id);
     modelsByProvider.set(provider, set);
@@ -1051,18 +1061,28 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
 function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: DashboardModelGroup[] }) {
   const [selectedAgentId, setSelectedAgentId] = useState("coo");
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
-  const [selectedModel, setSelectedModel] = useState<ModelSelection>(modelSelectionForAgent(selectedAgent));
-  const [defaultModel, setDefaultModel] = useState<ModelSelection>(modelSelectionForAgent(selectedAgent));
+  const initialModel = modelSelectionForAgent(selectedAgent, modelGroups);
+  const [selectedModel, setSelectedModel] = useState<ModelSelection>(initialModel);
+  const [defaultModel, setDefaultModel] = useState<ModelSelection>(initialModel);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [composerText, setComposerText] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const lastSyncedAgentKey = useRef<string | undefined>(undefined);
   const directReports = selectedAgent ? agents.filter((agent) => agent.manager === selectedAgent.id).length : 0;
   const workspaceName = selectedAgent?.runtime.split("/")[0] ?? "local";
 
   useEffect(() => {
-    if (!selectedAgent && agents[0]) setSelectedAgentId(agents[0].id);
-  }, [agents, selectedAgent]);
+    if (!selectedAgent) return;
+    if (selectedAgentId !== selectedAgent.id) setSelectedAgentId(selectedAgent.id);
+    const agentModelKey = `${selectedAgent.id}:${selectedAgent.modelProvider ?? ""}/${selectedAgent.modelId ?? selectedAgent.model}`;
+    if (lastSyncedAgentKey.current !== agentModelKey) {
+      const nextModel = modelSelectionForAgent(selectedAgent, modelGroups);
+      lastSyncedAgentKey.current = agentModelKey;
+      setSelectedModel(nextModel);
+      setDefaultModel(nextModel);
+    }
+  }, [modelGroups, selectedAgent, selectedAgentId]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -1071,7 +1091,12 @@ function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: Dashb
   function selectAgent(id: string) {
     const next = agents.find((agent) => agent.id === id);
     setSelectedAgentId(id);
-    if (next) setSelectedModel(modelSelectionForAgent(next));
+    if (next) {
+      const nextModel = modelSelectionForAgent(next, modelGroups);
+      lastSyncedAgentKey.current = `${next.id}:${next.modelProvider ?? ""}/${next.modelId ?? next.model}`;
+      setSelectedModel(nextModel);
+      setDefaultModel(nextModel);
+    }
   }
 
   function startNewChat() {
@@ -2488,8 +2513,8 @@ function AuditLogsPage({ events, rawEvents }: { events: EventRow[]; rawEvents: R
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {events.map((event) => (
-                  <TableRow key={`${event.time}-${event.event}`}>
+                {events.map((event, index) => (
+                  <TableRow key={`${event.time}-${event.event}-${index}`}>
                     <TableCell className="name">{event.time}</TableCell>
                     <TableCell>@{event.actor}</TableCell>
                     <TableCell>{event.event}</TableCell>

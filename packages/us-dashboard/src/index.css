@@ -585,7 +585,7 @@ h1 {
 
 .thread-empty h2 {
   color: var(--fg-1);
-  font-size: clamp(28px, 4vw, 44px);
+  font-size: clamp(24px, 3.2vw, 34px);
   line-height: 1.08;
   letter-spacing: 0;
   margin: 0;
@@ -785,10 +785,10 @@ h1 {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface-4) 86%, var(--surface-2)), color-mix(in srgb, var(--surface-3) 92%, var(--surface-2)));
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26);
-  min-height: 132px;
+  min-height: 118px;
   display: grid;
   grid-template-rows: 1fr auto;
-  padding: 16px;
+  padding: 14px;
 }
 
 .chat-composer textarea {
@@ -801,7 +801,7 @@ h1 {
   font-family: Inter, system-ui, -apple-system, sans-serif;
   font-size: 15px;
   line-height: 1.45;
-  min-height: 58px;
+  min-height: 48px;
   max-height: 180px;
 }
 
@@ -870,7 +870,8 @@ h1 {
 
 .model-pill {
   color: var(--fg-2);
-  min-width: 214px;
+  min-width: 238px;
+  width: 238px;
 }
 
 .select-pill select,
@@ -1797,7 +1798,7 @@ h1 {
 
 .model-selector.compact .model-trigger em {
   display: inline;
-  max-width: 92px;
+  max-width: 86px;
 }
 
 .model-trigger span {
@@ -1830,6 +1831,14 @@ h1 {
   background: var(--surface-2);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
   padding: 10px;
+}
+
+.model-selector.compact .model-popover {
+  width: min(420px, calc(100vw - 48px));
+  max-height: min(380px, calc(100vh - 220px));
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 60;
 }
 
 .field .model-popover {

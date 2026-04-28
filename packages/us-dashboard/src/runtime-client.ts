@@ -37,6 +37,8 @@ export interface RuntimeInfo {
 
 export interface RuntimeAgentSnapshot {
   profile: string;
+  model?: { provider?: string; id?: string };
+  modelChain?: Array<{ provider?: string; id?: string }>;
   pack?: {
     id?: string;
     identity?: {

@@ -117,6 +117,11 @@ test("GETAgents_WhenProfilesAndPacksExist_ReturnsRealAgentSnapshots", async () =
     [...coo.pack.identity.directReports].sort(),
     "The @coo snapshot must be backed by the atomic pack direct-report list, not a flattened UI fixture.",
   ).toEqual(["vp-eng", "vp-finance", "vp-gtm", "vp-ops"]);
+  expect(coo.model, "Agent snapshots must expose the resolved primary model so dashboards do not guess from stale fixtures.").toEqual(coo.pack.model.primary);
+  expect(
+    coo.modelChain,
+    "Agent snapshots must expose the full fallback chain so model pickers and run controls mirror prompt execution.",
+  ).toEqual([coo.pack.model.primary, ...coo.pack.model.fallback]);
   expect(coo.runtime.workspace.provider, "Agent snapshots must include resolved runtime workspace contracts.").toBe("local");
 });
 

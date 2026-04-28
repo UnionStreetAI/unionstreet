@@ -28,6 +28,7 @@ import {
   resolveMemorySyncConfig,
   resolveMcpGrantsForAgent,
   profileExists,
+  readModelChain,
   runAgentPrompt,
   summarizeUsage,
   writeEvent,
@@ -317,7 +318,7 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
 }
 
 async function agentSnapshot(profile: string, cwd: string) {
-  const [pack, runtime, principal, delegationTargets, mcpStatus, memorySync, sessions] = await Promise.all([
+  const [pack, runtime, principal, delegationTargets, mcpStatus, memorySync, sessions, modelChain] = await Promise.all([
     readOptionalRuntimeAgentPack(profile),
     resolveAgentRuntime(profile),
     resolveAgentPrincipal(profile),
@@ -325,11 +326,14 @@ async function agentSnapshot(profile: string, cwd: string) {
     inspectMcpStatus(cwd, profile),
     resolveMemorySyncConfig(profile),
     listSessions(profile),
+    readModelChain(profile),
   ]);
   const grants = await resolveMcpGrantsForAgent(profile, mcpStatus.servers);
   return {
     profile,
     pack,
+    model: modelChain[0],
+    modelChain,
     runtime,
     principal,
     delegation: delegationTargets,
