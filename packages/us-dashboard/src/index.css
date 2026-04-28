@@ -781,13 +781,14 @@ h1 {
 
 .chat-composer {
   border: 1px solid color-mix(in srgb, var(--border-2) 56%, transparent);
-  border-radius: 24px;
-  background: color-mix(in srgb, var(--surface-4) 78%, var(--surface-2));
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
-  min-height: 154px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-4) 86%, var(--surface-2)), color-mix(in srgb, var(--surface-3) 92%, var(--surface-2)));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26);
+  min-height: 132px;
   display: grid;
   grid-template-rows: 1fr auto;
-  padding: 20px 22px 16px;
+  padding: 16px;
 }
 
 .chat-composer textarea {
@@ -798,9 +799,10 @@ h1 {
   background: transparent;
   color: var(--fg-1);
   font-family: Inter, system-ui, -apple-system, sans-serif;
-  font-size: 18px;
-  line-height: 1.35;
-  min-height: 74px;
+  font-size: 15px;
+  line-height: 1.45;
+  min-height: 58px;
+  max-height: 180px;
 }
 
 .chat-composer textarea::placeholder {
@@ -812,7 +814,9 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border-1) 54%, transparent);
+  padding-top: 12px;
 }
 
 .composer-left,
@@ -827,12 +831,12 @@ h1 {
 
 .composer-left,
 .composer-right {
-  gap: 16px;
+  gap: 10px;
 }
 
 .composer-icon {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border: 0;
   color: var(--fg-4);
   background: transparent;
@@ -866,6 +870,7 @@ h1 {
 
 .model-pill {
   color: var(--fg-2);
+  min-width: 214px;
 }
 
 .select-pill select,
@@ -888,8 +893,8 @@ h1 {
 }
 
 .send-or-stop {
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
   border: 0;
   border-radius: 999px;
   display: inline-grid;
@@ -1760,7 +1765,7 @@ h1 {
 }
 
 .model-selector.compact {
-  width: auto;
+  width: 100%;
 }
 
 .model-trigger {
@@ -1779,14 +1784,20 @@ h1 {
 }
 
 .model-selector.compact .model-trigger {
-  min-height: unset;
-  width: auto;
-  border: 0;
-  background: transparent;
-  padding: 0;
+  min-height: 34px;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--border-1) 76%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
+  padding: 0 10px;
   color: var(--fg-2);
   font-size: 14px;
   font-weight: 650;
+}
+
+.model-selector.compact .model-trigger em {
+  display: inline;
+  max-width: 92px;
 }
 
 .model-trigger span {

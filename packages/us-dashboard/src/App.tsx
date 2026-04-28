@@ -482,7 +482,6 @@ function useRuntimeDashboard(): DashboardData {
           connected: true,
           events: mergeEvents(current.events, [event]).slice(0, 250),
         }));
-        void reload(controller.signal);
       },
       onError(error) {
         setSnapshot((current) => ({ ...current, error: error.message }));
@@ -1104,7 +1103,7 @@ function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: Dashb
       { kind: "assistant", id: assistantId, agent: profile, text: "", streaming: true, ts: now + 1 },
     ]);
 
-    sendAgentPrompt(profile, { prompt: text }).then((result) => {
+    sendAgentPrompt(profile, { prompt: text, model: selectedModel }).then((result) => {
       const toolTurns: ChatTurn[] = (result.toolCalls ?? []).map((call, index) => ({
         kind: "tool",
         id: cryptoId(`tool-${index}`),

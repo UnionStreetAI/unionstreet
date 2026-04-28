@@ -253,7 +253,7 @@ export async function loadRuntimeSnapshot(signal?: AbortSignal): Promise<Runtime
 
 export async function sendAgentPrompt(
   profile: string,
-  body: { prompt: string; sessionId?: string; trace?: string },
+  body: { prompt: string; sessionId?: string; trace?: string; model?: { provider: string; id: string } },
   signal?: AbortSignal,
 ): Promise<RuntimePromptResult> {
   const response = await runtimeJson<{ result: RuntimePromptResult }>(`/api/agents/${encodeURIComponent(profile)}/prompt`, {

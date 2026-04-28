@@ -169,6 +169,48 @@ test("POSTAgentPrompt_WhenPromptIsProvided_RunsRealAgentLoopAndPersistsSession",
   ).toBe(true);
 });
 
+test("POSTAgentPrompt_WhenDashboardProvidesModelOverride_UsesSelectedModelForRunMetadataAndUsage", async () => {
+  const promptRoute = "/api/agents/coo/prompt";
+
+  const { response, body } = await postJson(promptRoute, {
+    prompt: "hello from selected dashboard model",
+    model: { provider: "custom-openai-compat:dashboard", id: "dashboard-picked-model" },
+  });
+  const usage = await fetchJson(`/api/usage?actor=coo&trace=${body.result.trace}`);
+
+  expectStatus(response, 202, "dashboard model selection should be accepted by the real runtime prompt route");
+  expect(body.result.provider, "Prompt result provider must reflect the model picker selection.").toBe("custom-openai-compat:dashboard");
+  expect(body.result.model, "Prompt result model must reflect the model picker selection.").toBe("dashboard-picked-model");
+  expect(
+    usage.body.usage.some((record: any) => record.provider === "custom-openai-compat:dashboard" && record.model === "dashboard-picked-model"),
+    "Usage accounting must persist the dashboard-selected provider/model, not the agent default.",
+  ).toBe(true);
+});
+
+test("POSTAgentPrompt_WhenDashboardProvidesInvalidModelOverride_ReturnsBadRequestInsteadOfDefaultFallback", async () => {
+  const promptRoute = "/api/agents/coo/prompt";
+
+  const { response, body } = await postJson(promptRoute, {
+    prompt: "hello from invalid selected dashboard model",
+    model: { provider: "codex", id: "../gpt-5.4" },
+  });
+
+  expectStatus(response, 400, "invalid dashboard model override must fail before model execution");
+  expect(body.error, "Invalid model override errors must use a stable dashboard validation code.").toBe("invalid_model");
+});
+
+test("POSTAgentPrompt_WhenDashboardProvidesIncompleteModelOverride_ReturnsBadRequestInsteadOfDefaultFallback", async () => {
+  const promptRoute = "/api/agents/coo/prompt";
+
+  const { response, body } = await postJson(promptRoute, {
+    prompt: "hello from incomplete selected dashboard model",
+    model: { provider: "codex" },
+  });
+
+  expectStatus(response, 400, "incomplete dashboard model override must not silently use the agent default");
+  expect(body.message, "The error should explain that both provider and id are required.").toContain("provider and id");
+});
+
 test("POSTAgentPrompt_WhenPromptIsMissing_ReturnsActionableBadRequest", async () => {
   const promptRoute = "/api/agents/coo/prompt";
 

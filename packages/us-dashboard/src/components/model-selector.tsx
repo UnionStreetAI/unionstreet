@@ -72,7 +72,7 @@ export function ModelSelector({
       <button className="model-trigger" type="button" onClick={() => setOpen((next) => !next)}>
         <Zap size={compact ? 15 : 16} />
         <span>{current ? normalizedModelName(current.model) : value.id}</span>
-        {!compact && current && <em>{normalizedProviderName(current.group)}</em>}
+        {current && <em>{normalizedProviderName(current.group)}</em>}
         <ChevronDown size={15} />
       </button>
 

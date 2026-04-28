@@ -20,6 +20,7 @@ interface ProfileConfigYaml {
 export interface AgentPromptOptions {
   profile: string;
   prompt: string;
+  model?: ModelTarget;
   cwd?: string;
   sessionId?: string;
   sessionFile?: string;
@@ -52,14 +53,14 @@ export async function runAgentPrompt(options: AgentPromptOptions): Promise<Agent
 
   const paths = profilePaths(profile);
   const cfg = await readProfileConfig(paths.config);
-  const providerId = cfg.model?.provider ?? "codex";
-  const modelId = cfg.model?.id ?? "gpt-5.4";
+  const providerId = options.model?.provider ?? cfg.model?.provider ?? "codex";
+  const modelId = options.model?.id ?? cfg.model?.id ?? "gpt-5.4";
   const maxSteps = options.maxSteps ?? cfg.runtime?.max_steps ?? 50;
   const systemPrompt = await composeSystemPrompt(profile, modelId, providerId);
   const session = await resolveSession(profile, paths.sessions, options.sessionId, options.sessionFile);
   const trace = options.trace ?? createLashTrace();
   const runId = `${profile}:${session.sessionId}`;
-  const chain = await readModelChain(profile);
+  const chain = options.model ? [options.model] : await readModelChain(profile);
   const cwd = options.cwd ?? process.cwd();
   const tools = [...STARTER_TOOLS, ...(await resolveMcpToolsForAgent(profile, cwd))];
   const toolDefs = toolDefinitions(tools);

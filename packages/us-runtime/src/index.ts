@@ -149,9 +149,12 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
     if (isMalformedJson(body)) return json({ error: "malformed_json", message: body.message }, 400);
     const prompt = readPayloadString(body, "prompt");
     if (!prompt) return json({ error: "missing_prompt", message: "agent prompt requires JSON body { prompt: string }" }, 400);
+    const model = readBodyModelTarget(body);
+    if (!model.ok) return json(model.body, model.status);
     const result = await runAgentPrompt({
       profile: profile.profile,
       prompt,
+      ...(model.target ? { model: model.target } : {}),
       cwd,
       ...(readPayloadString(body, "sessionId") ? { sessionId: readPayloadString(body, "sessionId") } : {}),
       ...(readPayloadString(body, "trace") ? { trace: readPayloadString(body, "trace") } : {}),
@@ -543,9 +546,36 @@ function readPayloadString(body: unknown, key: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function readBodyModelTarget(
+  body: unknown,
+): { ok: true; target?: { provider: string; id: string } } | { ok: false; status: number; body: { error: string; message: string } } {
+  if (!isRecord(body) || body.model === undefined) return { ok: true };
+  if (!isRecord(body.model)) {
+    return { ok: false, status: 400, body: { error: "invalid_model", message: "model override must be { provider: string, id: string }" } };
+  }
+  const provider = typeof body.model.provider === "string" ? body.model.provider.trim() : "";
+  const id = typeof body.model.id === "string" ? body.model.id.trim() : "";
+  if (!provider || !id) {
+    return { ok: false, status: 400, body: { error: "invalid_model", message: "model override requires non-empty provider and id" } };
+  }
+  if (!isSafeModelRoutePart(provider, 128) || !isSafeModelRoutePart(id, 256)) {
+    return { ok: false, status: 400, body: { error: "invalid_model", message: "model provider/id may only contain letters, digits, dots, underscores, colons, slashes, and dashes" } };
+  }
+  return { ok: true, target: { provider, id } };
+}
+
 function readHeaderPrincipal(request: Request): string | undefined {
   const value = request.headers.get("x-union-street-actor") ?? request.headers.get("x-us-actor");
   return value?.trim() || undefined;
+}
+
+function isSafeModelRoutePart(value: string, max: number): boolean {
+  return value.length > 0
+    && value.length <= max
+    && !value.includes("..")
+    && !value.startsWith("/")
+    && !value.endsWith("/")
+    && /^[A-Za-z0-9._:/-]+$/.test(value);
 }
 
 function selectedHeaders(headers: Headers): Record<string, string> {
