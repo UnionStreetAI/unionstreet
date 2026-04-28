@@ -63,7 +63,7 @@ describe("Codex Responses transport", () => {
       tools: [{ type: "function", name: "lookup", description: "Search", parameters: { type: "object" }, strict: true }],
       sessionId: "session-1",
       baseUrl: "https://chatgpt.example.test/backend-api",
-      fetch: fetcher as typeof fetch,
+      fetch: fetcher as unknown as typeof fetch,
     }));
 
     expect(calls[0]?.url, "The Codex client should append /codex/responses to backend roots.").toBe("https://chatgpt.example.test/backend-api/codex/responses");
@@ -138,7 +138,7 @@ describe("model discovery", () => {
       });
     };
 
-    const models = await listCodexModels({ token, baseUrl: "https://chatgpt.example.test/backend-api/", clientVersion: "1.2.3", fetch: fetcher as typeof fetch });
+    const models = await listCodexModels({ token, baseUrl: "https://chatgpt.example.test/backend-api/", clientVersion: "1.2.3", fetch: fetcher as unknown as typeof fetch });
 
     expect(requestedUrls, "Model discovery should hit the Codex models endpoint with encoded client version.").toEqual([
       "https://chatgpt.example.test/backend-api/codex/models?client_version=1.2.3",
@@ -156,7 +156,7 @@ describe("model discovery", () => {
       return Response.json({ data: [{ id: "gemma", owned_by: "local", context_length: 32000 }] });
     };
 
-    const models = await listOpenAIModels({ baseUrl: "https://llm.example.test", apiKey: "sk-test", fetch: fetcher as typeof fetch });
+    const models = await listOpenAIModels({ baseUrl: "https://llm.example.test", apiKey: "sk-test", fetch: fetcher as unknown as typeof fetch });
 
     expect(requestedUrls, "OpenAI-compatible discovery should retry /v1/models when the saved root omits /v1.").toEqual([
       "https://llm.example.test/models",

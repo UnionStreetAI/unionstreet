@@ -21,6 +21,10 @@
     "test:scheduler": "bun run scripts/scheduler-run.ts",
     "test:ultimate": "bun run scripts/ultimate-run.ts",
     "test:ultimate:live": "bun run scripts/ultimate-run.ts --live",
+    "image:runtime": "docker build --build-context lash-ts=../lash-ts -f docker/Dockerfile.runtime -t unionstreet/runtime:dev .",
+    "image:agent": "docker build --build-context lash-ts=../lash-ts -f docker/Dockerfile.agent -t unionstreet/agent-runtime:dev .",
+    "image:dashboard": "docker build --build-context lash-ts=../lash-ts -f docker/Dockerfile.dashboard -t unionstreet/dashboard:dev .",
+    "image:all": "bun run image:runtime && bun run image:agent && bun run image:dashboard",
     "check": "bun run scripts/full-run.ts",
     "check:parallel": "bun run scripts/parallel-check.ts",
     "duck:install": "duck install",
@@ -29,8 +33,10 @@
     "clean": "rm -rf packages/*/dist plugins/*/dist node_modules"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/bun": "latest",
     "@unionstreet/duck": "^0.1.0",
+    "js-yaml": "^4.1.0",
     "typescript": "^5.6.0"
   },
   "engines": {

@@ -1,0 +1,9 @@
+.git
+node_modules
+packages/*/dist
+plugins/*/dist
+*.log
+.DS_Store
+.env
+.env.local
+packages/*/tsconfig.tsbuildinfo
