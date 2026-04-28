@@ -43,6 +43,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./com
 import { ModelSelector, type DashboardModelGroup, type ModelSelection } from "./components/model-selector";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
+import {
+  loadRuntimeSnapshot,
+  ensureAgentRuntime,
+  runSchedulerTick,
+  sendAgentPrompt,
+  streamRuntimeEvents,
+  type RuntimeAgentSnapshot,
+  type RuntimeContract,
+  type RuntimeEvent,
+  type RuntimeMemoryEvent,
+  type RuntimeSchedulerJob,
+  type RuntimeSchedulerRun,
+  type RuntimeSnapshot,
+} from "./runtime-client";
 
 type Theme = "dark" | "light";
 type AgentStatus = "live" | "idle" | "blocked";
@@ -369,15 +383,153 @@ const utilityNav = [
   { label: "Doctor", icon: Stethoscope },
 ];
 
-export function App() {
-  const [theme, setTheme] = useState<Theme>("dark");
-  const [activeTab, setActiveTab] = useState("Overview");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+interface DashboardData {
+  snapshot: RuntimeSnapshot;
+  agents: Agent[];
+  events: EventRow[];
+  rawEvents: RuntimeEvent[];
+  schedulerJobs: RuntimeSchedulerJob[];
+  schedulerRuns: RuntimeSchedulerRun[];
+  memoryEntries: MemoryEntry[];
+  memoryStores: MemoryStoreRow[];
+  reports: ReportRow[];
+  environments: EnvironmentRow[];
+  providers: ProviderRow[];
+  plugins: PluginRow[];
+  modelGroups: DashboardModelGroup[];
+  statusCounts: { live: number; idle: number; blocked: number };
+  reload(): Promise<void>;
+}
+
+interface MemoryEntry {
+  id: string;
+  agent: string;
+  store: string;
+  type: string;
+  scope: string;
+  confidence: number;
+  updated: string;
+  source: string;
+  tags: string[];
+  text: string;
+}
+
+interface MemoryStoreRow {
+  agent: string;
+  store: string;
+  entries: number;
+  status: string;
+  last: string;
+}
+
+interface ReportRow {
+  title: string;
+  agent: string;
+  route: string;
+  status: string;
+  detail: string;
+}
+
+interface EnvironmentRow {
+  provider: string;
+  compute: string;
+  storage: string;
+  ingress: string;
+  state: string;
+}
+
+interface ProviderRow {
+  name: string;
+  kind: string;
+  status: string;
+  models: string;
+  baseUrl: string;
+}
+
+interface PluginRow {
+  name: string;
+  category: string;
+  status: string;
+  scope: string;
+  detail: string;
+}
+
+function useRuntimeDashboard(): DashboardData {
+  const [snapshot, setSnapshot] = useState<RuntimeSnapshot>(() => ({
+    connected: false,
+    baseUrl: "http://127.0.0.1:8787",
+    agents: [],
+    runtimes: [],
+    events: [],
+    usage: { usage: [], summary: {} },
+    scheduler: { jobs: [], runs: [] },
+    memory: [],
+  }));
+
+  async function reload(signal?: AbortSignal) {
+    const next = await loadRuntimeSnapshot(signal);
+    if (!signal?.aborted) setSnapshot(next);
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void reload(controller.signal);
+    void streamRuntimeEvents({
+      signal: controller.signal,
+      onEvent(event) {
+        setSnapshot((current) => ({
+          ...current,
+          connected: true,
+          events: mergeEvents(current.events, [event]).slice(0, 250),
+        }));
+        void reload(controller.signal);
+      },
+      onError(error) {
+        setSnapshot((current) => ({ ...current, error: error.message }));
+      },
+    }).catch((error) => {
+      if (!controller.signal.aborted) setSnapshot((current) => ({ ...current, error: (error as Error).message }));
+    });
+    return () => controller.abort();
+  }, []);
+
+  const agents = useMemo(() => snapshot.agents.map(agentFromRuntime), [snapshot.agents]);
+  const rawEvents = snapshot.events;
+  const eventRows = useMemo(() => rawEvents.map(eventRowFromRuntime), [rawEvents]);
+  const memoryRows = useMemo(() => memoryEntriesFromRuntime(snapshot.memory), [snapshot.memory]);
+  const memoryStores = useMemo(() => memoryStoresFromRuntime(snapshot.agents, snapshot.memory), [snapshot.agents, snapshot.memory]);
+  const modelGroupsLive = useMemo(() => modelGroupsFromRuntime(snapshot.agents), [snapshot.agents]);
   const statusCounts = useMemo(() => ({
     live: agents.filter((agent) => agent.status === "live").length,
     idle: agents.filter((agent) => agent.status === "idle").length,
     blocked: agents.filter((agent) => agent.status === "blocked").length,
-  }), []);
+  }), [agents]);
+
+  return {
+    snapshot,
+    agents,
+    events: eventRows,
+    rawEvents,
+    schedulerJobs: snapshot.scheduler.jobs,
+    schedulerRuns: snapshot.scheduler.runs,
+    memoryEntries: memoryRows,
+    memoryStores,
+    reports: reportsFromEvents(rawEvents, agents),
+    environments: environmentsFromRuntime(snapshot),
+    providers: providersFromRuntime(snapshot.agents),
+    plugins: pluginsFromRuntime(snapshot),
+    modelGroups: modelGroupsLive.length ? modelGroupsLive : modelGroups,
+    statusCounts,
+    reload: () => reload(),
+  };
+}
+
+export function App() {
+  const [theme, setTheme] = useState<Theme>("dark");
+  const [activeTab, setActiveTab] = useState("Overview");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const data = useRuntimeDashboard();
+  const { agents, statusCounts } = data;
 
   return (
     <div className={`dashboard ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-theme={theme}>
@@ -431,9 +583,9 @@ export function App() {
         <div className="sidebar-footer">
           <div className="health-line">
             <span className="pulse" />
-            <span>head node live</span>
+            <span>{data.snapshot.connected ? "head node live" : "runtime disconnected"}</span>
           </div>
-          <div className="mono-muted">127.0.0.1:5174</div>
+          <div className="mono-muted">{data.snapshot.baseUrl}</div>
         </div>
       </aside>
 
@@ -461,30 +613,36 @@ export function App() {
 
         <section className="content">
           {activeTab === "Chat" ? (
-            <ChatPage />
+            <ChatPage agents={agents} modelGroups={data.modelGroups} />
           ) : activeTab === "Calendar" ? (
-            <SchedulePage />
+            <SchedulePage agents={agents} jobs={data.schedulerJobs} runs={data.schedulerRuns} reload={data.reload} />
           ) : activeTab === "Reports" ? (
-            <ReportsPage />
+            <ReportsPage reports={data.reports} rawEvents={data.rawEvents} />
           ) : activeTab === "Agents" ? (
-            <AgentFleet agents={agents} modelGroups={modelGroups} initialView="graph" />
+            <AgentFleet agents={agents} modelGroups={data.modelGroups} initialView="graph" />
           ) : activeTab === "Providers" ? (
-            <ProvidersPage />
+            <ProvidersPage providers={data.providers} />
+          ) : activeTab === "MCP" ? (
+            <McpPage agents={data.snapshot.agents} plugins={data.plugins} />
+          ) : activeTab === "Webhooks" ? (
+            <WebhooksPage events={data.rawEvents} />
+          ) : activeTab === "Environments" ? (
+            <EnvironmentsPage environments={data.environments} runtimes={data.snapshot.runtimes} reload={data.reload} />
           ) : activeTab === "Plugins" ? (
-            <PluginsPage />
+            <PluginsPage plugins={data.plugins} />
           ) : activeTab === "Memory" ? (
-            <MemoryPage />
+            <MemoryPage agents={agents} memories={data.memoryStores} memoryEntries={data.memoryEntries} />
           ) : activeTab === "Audit Logs" ? (
-            <AuditLogsPage />
+            <AuditLogsPage events={data.events} rawEvents={data.rawEvents} />
           ) : activeTab === "Doctor" ? (
-            <DoctorPage />
+            <DoctorPage snapshot={data.snapshot} agents={agents} events={data.rawEvents} />
           ) : (
             <>
           <div className="page-head">
             <div>
               <p className="eyebrow">OIDC-native agent harness</p>
               <h1>Head node management</h1>
-              <p className="lede">Local operator view into federation, Lash threads, MCP grants, and environment placement.</p>
+              <p className="lede">{data.snapshot.connected ? "Live operator view into federation, Lash threads, MCP grants, and environment placement." : `Runtime unavailable at ${data.snapshot.baseUrl}: ${data.snapshot.error ?? "not connected"}`}</p>
             </div>
             <div className="actions">
               <Button variant="secondary"><Terminal size={15} />Open TUI</Button>
@@ -502,9 +660,9 @@ export function App() {
 
           <section className="kpi-grid">
             <Kpi label="Agents" value={String(agents.length)} delta={`${statusCounts.live} live`} />
-            <Kpi label="Lash threads" value="12" delta="5 active" />
-            <Kpi label="MCP grants" value={String(grants.length)} delta="2 require approval" />
-            <Kpi label="Environments" value={String(environments.length)} delta="local default" />
+            <Kpi label="Lash threads" value={String(data.rawEvents.filter((event) => event.threadId).length)} delta="from live events" />
+            <Kpi label="MCP grants" value={String(data.plugins.filter((plugin) => plugin.category === "MCP").length)} delta="resolved live" />
+            <Kpi label="Environments" value={String(data.environments.length)} delta="runtime contracts" />
           </section>
 
           <section className="dashboard-grid">
@@ -551,7 +709,7 @@ export function App() {
                 <Network size={16} />
               </CardHeader>
               <CardContent>
-                <OrgGraph />
+                <OrgGraph agents={agents} />
               </CardContent>
             </Card>
 
@@ -564,13 +722,13 @@ export function App() {
                 <McpIcon size={16} />
               </CardHeader>
               <CardContent className="grant-list">
-                {grants.map((grant) => (
-                  <div className="grant-row" key={grant.group}>
+                {data.plugins.filter((plugin) => plugin.category === "MCP").map((grant) => (
+                  <div className="grant-row" key={grant.name}>
                     <div>
-                      <div className="row-title">{grant.group}</div>
-                      <div className="row-sub">{grant.servers}</div>
+                      <div className="row-title">{grant.name}</div>
+                      <div className="row-sub">{grant.scope}</div>
                     </div>
-                    <div className="row-meta">{grant.tools}</div>
+                    <div className="row-meta">{grant.status}</div>
                   </div>
                 ))}
               </CardContent>
@@ -585,7 +743,7 @@ export function App() {
                 <LaptopMinimal size={16} />
               </CardHeader>
               <CardContent className="runtime-list">
-                {environments.map((runtime) => (
+                {data.environments.map((runtime) => (
                   <div className="runtime-row" key={runtime.provider}>
                     <LaptopMinimal size={15} />
                     <div>
@@ -627,7 +785,7 @@ export function App() {
               </CardHeader>
               <CardContent>
                 <div className="event-feed">
-                  {events.map((event) => (
+                  {data.events.map((event) => (
                     <div className="event-row" key={`${event.time}-${event.actor}-${event.event}`}>
                       <span>{event.time}</span>
                       <b>@{event.actor}</b>
@@ -647,7 +805,8 @@ export function App() {
   );
 }
 
-function modelSelectionForAgent(agent: Agent): ModelSelection {
+function modelSelectionForAgent(agent: Agent | undefined): ModelSelection {
+  if (!agent) return { provider: "codex", id: "gpt-5.4" };
   const wanted = agent.model.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   for (const group of modelGroups) {
     const model = group.models.find((candidate) => candidate.id === wanted || candidate.name?.toLowerCase() === agent.model.toLowerCase());
@@ -656,17 +815,255 @@ function modelSelectionForAgent(agent: Agent): ModelSelection {
   return { provider: "openai", id: "gpt-5.4" };
 }
 
-function ChatPage() {
+function agentFromRuntime(snapshot: RuntimeAgentSnapshot): Agent {
+  const provider = snapshot.pack?.model?.primary?.provider ?? "codex";
+  const modelId = snapshot.pack?.model?.primary?.id ?? "gpt-5.4";
+  const manager = cleanProfile(snapshot.principal?.manager);
+  const groups = snapshot.principal?.groups ?? snapshot.pack?.identity?.groups ?? [];
+  const roles = snapshot.principal?.roles ?? snapshot.pack?.identity?.roles ?? [];
+  const runtimeName = runtimeLabel(snapshot.runtime);
+  return {
+    id: snapshot.profile,
+    title: snapshot.pack?.identity?.title ?? snapshot.principal?.title ?? snapshot.pack?.identity?.displayName ?? snapshot.profile,
+    ...(manager ? { manager } : {}),
+    group: groups[0] ?? roles[0] ?? "agents",
+    model: normalizedDisplayModel(`${provider}/${modelId}`),
+    runtime: runtimeName,
+    status: snapshot.runtime?.warnings?.length ? "blocked" : snapshot.sessions?.length ? "live" : "idle",
+    activeThread: snapshot.pack?.lash?.thread,
+  };
+}
+
+function eventRowFromRuntime(event: RuntimeEvent): EventRow {
+  return {
+    time: event.ts ? new Date(event.ts).toLocaleTimeString([], { hour12: false }) : "--:--:--",
+    actor: cleanProfile(event.actor) ?? "system",
+    event: event.type,
+    detail: event.reason ?? event.resource ?? event.trace ?? summarizePayload(event.payload),
+  };
+}
+
+function memoryEntriesFromRuntime(memory: RuntimeMemoryEvent[]): MemoryEntry[] {
+  return memory.map((entry, index) => ({
+    id: entry.id ?? `memory-${index}`,
+    agent: cleanProfile(entry.peer) ?? "system",
+    store: "runtime",
+    type: entry.kind ?? "memory",
+    scope: entry.trace ?? "agent",
+    confidence: 1,
+    updated: entry.ts ? new Date(entry.ts).toLocaleString() : "unknown",
+    source: entry.source ?? entry.trace ?? "runtime",
+    tags: [entry.kind ?? "memory", entry.trace ? "trace" : "local"].filter(Boolean),
+    text: entry.text ?? summarizePayload(entry.payload),
+  }));
+}
+
+function memoryStoresFromRuntime(agents: RuntimeAgentSnapshot[], memory: RuntimeMemoryEvent[]): MemoryStoreRow[] {
+  const countByAgent = new Map<string, number>();
+  for (const entry of memory) {
+    const agent = cleanProfile(entry.peer) ?? "system";
+    countByAgent.set(agent, (countByAgent.get(agent) ?? 0) + 1);
+  }
+  return agents.map((agent) => ({
+    agent: agent.profile,
+    store: agent.memory?.enabled === false ? "local" : "honcho/local",
+    entries: countByAgent.get(agent.profile) ?? 0,
+    status: agent.memory?.enabled === false ? "ready" : "syncing",
+    last: agent.sessions?.[0]?.id ?? "no sessions",
+  }));
+}
+
+function modelGroupsFromRuntime(agents: RuntimeAgentSnapshot[]): DashboardModelGroup[] {
+  const byProvider = new Map<string, DashboardModelGroup>();
+  for (const agent of agents) {
+    const provider = agent.pack?.model?.primary?.provider ?? "codex";
+    const id = agent.pack?.model?.primary?.id ?? "gpt-5.4";
+    const group = byProvider.get(provider) ?? { id: provider, label: normalizedProviderLabel(provider), models: [] };
+    if (!group.models.some((model) => model.id === id)) {
+      group.models.push({ id, name: normalizedDisplayModel(id), recent: true });
+    }
+    for (const fallback of agent.pack?.model?.fallback ?? []) {
+      const fallbackProvider = fallback.provider ?? provider;
+      const fallbackId = fallback.id ?? "";
+      if (!fallbackId) continue;
+      const fallbackGroup = byProvider.get(fallbackProvider) ?? { id: fallbackProvider, label: normalizedProviderLabel(fallbackProvider), models: [] };
+      if (!fallbackGroup.models.some((model) => model.id === fallbackId)) {
+        fallbackGroup.models.push({ id: fallbackId, name: normalizedDisplayModel(fallbackId) });
+      }
+      byProvider.set(fallbackProvider, fallbackGroup);
+    }
+    byProvider.set(provider, group);
+  }
+  return [...byProvider.values()];
+}
+
+function reportsFromEvents(events: RuntimeEvent[], agents: Agent[]): ReportRow[] {
+  const reportEvents = events.filter((event) => event.type.includes("report") || event.type === "scheduler.run.complete" || event.type === "prompt.run.complete");
+  return reportEvents.slice(0, 20).map((event) => ({
+    title: event.type.replaceAll(".", " "),
+    agent: cleanProfile(event.actor) ?? "system",
+    route: routeForEvent(event, agents),
+    status: event.outcome === "failure" ? "blocked" : event.type === "scheduler.run.complete" ? "scheduled" : "ready",
+    detail: event.reason ?? event.resource ?? event.trace ?? summarizePayload(event.payload),
+  }));
+}
+
+function environmentsFromRuntime(snapshot: RuntimeSnapshot): EnvironmentRow[] {
+  return snapshot.runtimes.map((runtime, index) => ({
+    provider: String(runtime.provider ?? runtime.runtime ?? runtime.profile ?? `runtime-${index}`),
+    compute: summarizePayload(runtime.compute),
+    storage: summarizePayload(runtime.storage),
+    ingress: summarizePayload(runtime.ingress),
+    state: runtime.warnings?.length ? "blocked" : "ready",
+  }));
+}
+
+function providersFromRuntime(agents: RuntimeAgentSnapshot[]): ProviderRow[] {
+  const modelsByProvider = new Map<string, Set<string>>();
+  for (const agent of agents) {
+    const provider = agent.pack?.model?.primary?.provider ?? "codex";
+    const id = agent.pack?.model?.primary?.id ?? "gpt-5.4";
+    const set = modelsByProvider.get(provider) ?? new Set<string>();
+    set.add(id);
+    modelsByProvider.set(provider, set);
+  }
+  return [...modelsByProvider.entries()].map(([provider, models]) => ({
+    name: normalizedProviderLabel(provider),
+    kind: provider.includes("oauth") || provider === "codex" ? "oauth/profile" : "configured",
+    status: "configured",
+    models: [...models].map(normalizedDisplayModel).join(", "),
+    baseUrl: provider,
+  }));
+}
+
+function pluginsFromRuntime(snapshot: RuntimeSnapshot): PluginRow[] {
+  const mcpServers = new Map<string, PluginRow>();
+  for (const agent of snapshot.agents) {
+    for (const server of agent.mcp?.servers ?? []) {
+      const grant = agent.mcp?.grants?.[server.name];
+      mcpServers.set(server.name, {
+        name: server.name,
+        category: "MCP",
+        status: grant?.allowed ? "granted" : server.credential?.configured ? "configured" : "available",
+        scope: `@${agent.profile}`,
+        detail: server.url ?? server.command ?? server.transport ?? "configured server",
+      });
+    }
+  }
+  const runtimePlugins = snapshot.runtimes.map((runtime, index) => ({
+    name: `runtime-${runtime.provider ?? runtime.profile ?? index}`,
+    category: "Environment",
+    status: runtime.warnings?.length ? "blocked" : "installed",
+    scope: String(runtime.profile ?? "agent"),
+    detail: runtimeLabel(runtime),
+  }));
+  return [...runtimePlugins, ...mcpServers.values()];
+}
+
+function scheduledSyncsFromJobs(jobs: RuntimeSchedulerJob[]) {
+  return jobs.map((job) => {
+    const parsed = parseCronish(job.cron);
+    return {
+      id: job.id,
+      day: parsed.day,
+      time: parsed.time,
+      duration: job.kind === "pulse" ? "heartbeat" : "30m",
+      title: job.name ?? `${job.kind} ${job.profile}`,
+      topic: job.prompt?.split("\n")[0] ?? `${job.kind} wakeup`,
+      agents: [job.profile],
+      lash: `scheduler -> ${job.profile}`,
+      command: `us ${job.profile} -p ${JSON.stringify(job.prompt ?? "Run scheduled job.")}`,
+      deliverables: job.deliverables?.length ? job.deliverables : [job.kind === "pulse" ? "heartbeat report" : "scheduled deliverable"],
+      status: job.enabled === false ? "draft" : "scheduled",
+      prompt: job.prompt ?? "",
+    };
+  });
+}
+
+function mergeEvents(current: RuntimeEvent[], incoming: RuntimeEvent[]): RuntimeEvent[] {
+  const seen = new Set<string>();
+  return [...incoming, ...current].filter((event) => {
+    const key = event.id ?? `${event.ts}:${event.type}:${event.actor}:${event.resource}:${event.trace}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+}
+
+function routeForEvent(event: RuntimeEvent, agents: Agent[]): string {
+  const actor = cleanProfile(event.actor) ?? "system";
+  const target = cleanProfile(event.target);
+  if (target) return `${target} <- ${actor}`;
+  const manager = agents.find((agent) => agent.id === actor)?.manager;
+  return manager ? `${manager} <- ${actor}` : actor;
+}
+
+function runtimeLabel(runtime: RuntimeContract | undefined): string {
+  if (!runtime) return "unknown";
+  const provider = runtime.provider ?? runtime.runtime ?? "local";
+  const compute = isRecordValue(runtime.compute) ? String(runtime.compute.kind ?? runtime.compute.provider ?? "host") : "host";
+  return `${provider}/${compute}`;
+}
+
+function parseCronish(cron: string | undefined): { day: string; time: string } {
+  const parts = cron?.split(/\s+/) ?? [];
+  const minute = Number(parts[0] ?? 0);
+  const hour = Number(parts[1] ?? 9);
+  const day = String(parts[4] ?? "*").toUpperCase();
+  return {
+    day: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].includes(day) ? titleDay(day) : "Mon",
+    time: `${String(Number.isFinite(hour) ? hour : 9).padStart(2, "0")}:${String(Number.isFinite(minute) ? minute : 0).padStart(2, "0")}`,
+  };
+}
+
+function titleDay(day: string): string {
+  return day.slice(0, 1) + day.slice(1).toLowerCase();
+}
+
+function cleanProfile(value: string | undefined): string | undefined {
+  return value?.replace(/^agent:/, "").replace(/^@/, "");
+}
+
+function normalizedProviderLabel(provider: string): string {
+  if (provider === "codex") return "OpenAI";
+  return provider.split(/[-_:/.]+/).filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ");
+}
+
+function normalizedDisplayModel(value: string): string {
+  const slug = value.split("/").pop() ?? value;
+  return slug.split(/[-_]+/).filter(Boolean).map((part) => /^[0-9.]+$/.test(part) ? part : part[0]?.toUpperCase() + part.slice(1)).join(" ");
+}
+
+function summarizePayload(payload: unknown): string {
+  if (payload == null) return "";
+  if (typeof payload === "string") return payload;
+  if (typeof payload === "number" || typeof payload === "boolean") return String(payload);
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: DashboardModelGroup[] }) {
   const [selectedAgentId, setSelectedAgentId] = useState("coo");
-  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0]!;
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   const [selectedModel, setSelectedModel] = useState<ModelSelection>(modelSelectionForAgent(selectedAgent));
   const [defaultModel, setDefaultModel] = useState<ModelSelection>(modelSelectionForAgent(selectedAgent));
-  const [turns, setTurns] = useState<ChatTurn[]>(initialChatTurns);
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [composerText, setComposerText] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
-  const directReports = agents.filter((agent) => agent.manager === selectedAgent.id).length;
-  const workspaceName = selectedAgent.runtime.split("/")[0] ?? "local";
+  const directReports = selectedAgent ? agents.filter((agent) => agent.manager === selectedAgent.id).length : 0;
+  const workspaceName = selectedAgent?.runtime.split("/")[0] ?? "local";
+
+  useEffect(() => {
+    if (!selectedAgent && agents[0]) setSelectedAgentId(agents[0].id);
+  }, [agents, selectedAgent]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -683,7 +1080,7 @@ function ChatPage() {
       {
         kind: "system",
         id: cryptoId("system"),
-        text: `new session started · provider ${selectedModel.provider}/${selectedModel.id} · agent @${selectedAgent.id}`,
+        text: `new session started · provider ${selectedModel.provider}/${selectedModel.id} · agent @${selectedAgent?.id ?? "none"}`,
         ts: Date.now(),
       },
     ]);
@@ -694,32 +1091,62 @@ function ChatPage() {
   function submitChat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = composerText.trim();
-    if (!text || isRunning) return;
+    if (!text || isRunning || !selectedAgent) return;
 
     const now = Date.now();
     const assistantId = cryptoId("assistant");
+    const profile = selectedAgent.id;
     setComposerText("");
     setIsRunning(true);
     setTurns((prev) => [
       ...prev,
       { kind: "user", id: cryptoId("user"), text, ts: now },
-      { kind: "assistant", id: assistantId, agent: selectedAgent.id, text: "", streaming: true, ts: now + 1 },
+      { kind: "assistant", id: assistantId, agent: profile, text: "", streaming: true, ts: now + 1 },
     ]);
 
-    window.setTimeout(() => {
+    sendAgentPrompt(profile, { prompt: text }).then((result) => {
+      const toolTurns: ChatTurn[] = (result.toolCalls ?? []).map((call, index) => ({
+        kind: "tool",
+        id: cryptoId(`tool-${index}`),
+        name: call.name ?? "tool",
+        args: JSON.stringify(call.args ?? {}, null, 2),
+        result: call.result == null ? null : typeof call.result === "string" ? call.result : JSON.stringify(call.result, null, 2),
+        ts: Date.now(),
+      }));
       setTurns((prev) =>
-        prev.map((turn) =>
+        prev.flatMap((turn) =>
           turn.kind === "assistant" && turn.id === assistantId
             ? {
                 ...turn,
-                text: draftLocalAgentReply(text, selectedAgent, directReports, selectedModel),
+                text: result.text ?? "",
                 streaming: false,
               }
+            : turn,
+        ).concat(toolTurns),
+      );
+      setIsRunning(false);
+    }).catch((error) => {
+      setTurns((prev) =>
+        prev.map((turn) =>
+          turn.kind === "assistant" && turn.id === assistantId
+            ? { ...turn, text: `Runtime error: ${(error as Error).message}`, streaming: false }
             : turn,
         ),
       );
       setIsRunning(false);
-    }, 260);
+    });
+  }
+
+  if (!selectedAgent) {
+    return (
+      <section className="chat-stage">
+        <div className="thread-empty">
+          <MessageSquare size={20} />
+          <h2>No live agents</h2>
+          <p>Start `us runtime serve` and refresh the dashboard connection.</p>
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -1003,10 +1430,11 @@ function kFmt(n: number): string {
   return `${(n / 1000).toFixed(1)}k`;
 }
 
-function SchedulePage() {
-  const [selectedId, setSelectedId] = useState(scheduledSyncs[0]!.id);
+function SchedulePage({ agents, jobs, runs, reload }: { agents: Agent[]; jobs: RuntimeSchedulerJob[]; runs: RuntimeSchedulerRun[]; reload(): Promise<void> }) {
+  const scheduledSyncs = useMemo(() => scheduledSyncsFromJobs(jobs), [jobs]);
+  const [selectedId, setSelectedId] = useState(scheduledSyncs[0]?.id ?? "");
   const [calendarView, setCalendarView] = useState<"day" | "week" | "month">("week");
-  const selected = scheduledSyncs.find((sync) => sync.id === selectedId) ?? scheduledSyncs[0]!;
+  const selected = scheduledSyncs.find((sync) => sync.id === selectedId) ?? scheduledSyncs[0];
   const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00"];
   const monthCells = [
@@ -1022,7 +1450,16 @@ function SchedulePage() {
   }));
   const syncsByDay = (day: string) => scheduledSyncs.filter((sync) => sync.day === day);
   const syncsByMonthDay = (day: number) => scheduledSyncs.filter((sync) => monthDayForSync(sync.day) === day);
-  const visibleDays = calendarView === "day" ? [selected.day] : weekDays;
+  const visibleDays = calendarView === "day" && selected ? [selected.day] : weekDays;
+
+  useEffect(() => {
+    if (!selectedId && scheduledSyncs[0]) setSelectedId(scheduledSyncs[0].id);
+  }, [scheduledSyncs, selectedId]);
+
+  async function runDueNow() {
+    await runSchedulerTick({ execute: true });
+    await reload();
+  }
 
   return (
     <>
@@ -1034,7 +1471,7 @@ function SchedulePage() {
         </div>
         <div className="actions">
           <Button variant="secondary"><Settings2 size={15} />Calendar settings</Button>
-          <Button variant="laser"><CalendarDays size={15} />New sync</Button>
+          <Button variant="laser" onClick={() => void runDueNow()}><CalendarDays size={15} />Run due now</Button>
         </div>
       </div>
 
@@ -1044,8 +1481,8 @@ function SchedulePage() {
           <Button variant="secondary">Today</Button>
           <Button variant="secondary" size="icon" aria-label="Next period"><ChevronRight size={15} /></Button>
           <div>
-            <b>Apr 27 - May 3, 2026</b>
-            <span>All-agent schedule · America/Los_Angeles</span>
+            <b>Live scheduler</b>
+            <span>{jobs.length} jobs · {runs.length} recorded runs</span>
           </div>
         </div>
         <Tabs>
@@ -1101,7 +1538,7 @@ function SchedulePage() {
                         {syncs.map((sync) => (
                           <button
                             key={sync.id}
-                            className={`month-event ${sync.id === selected.id ? "active" : ""}`}
+                            className={`month-event ${sync.id === selected?.id ? "active" : ""}`}
                             onClick={() => setSelectedId(sync.id)}
                           >
                             <span>{sync.time}</span>
@@ -1130,7 +1567,7 @@ function SchedulePage() {
                       return (
                         <button
                           key={`${day}-${hour}`}
-                          className={`calendar-cell ${syncs.length ? "has-sync" : ""} ${syncs.some((sync) => sync.id === selected.id) ? "active" : ""}`}
+                          className={`calendar-cell ${syncs.length ? "has-sync" : ""} ${syncs.some((sync) => sync.id === selected?.id) ? "active" : ""}`}
                           onClick={() => syncs[0] && setSelectedId(syncs[0].id)}
                         >
                           {syncs.map((sync) => (
@@ -1161,7 +1598,7 @@ function SchedulePage() {
             <CardContent className="agent-agenda-list">
               {scheduledAgents.map(({ agent, syncs }) => (
                 <button
-                  className={`agent-agenda-row ${syncs.some((sync) => sync.id === selected.id) ? "active" : ""}`}
+                  className={`agent-agenda-row ${syncs.some((sync) => sync.id === selected?.id) ? "active" : ""}`}
                   key={agent.id}
                   onClick={() => syncs[0] && setSelectedId(syncs[0].id)}
                   disabled={syncs.length === 0}
@@ -1176,33 +1613,39 @@ function SchedulePage() {
           <Card>
             <CardHeader>
               <div>
-                <CardTitle>{selected.title}</CardTitle>
-                <CardDescription>{selected.topic}</CardDescription>
+                <CardTitle>{selected?.title ?? "No scheduled jobs"}</CardTitle>
+                <CardDescription>{selected?.topic ?? "The runtime has not exposed pulse or schedule jobs yet."}</CardDescription>
               </div>
-              <Badge tone={selected.status === "scheduled" ? "success" : "muted"}>{selected.status}</Badge>
+              {selected && <Badge tone={selected.status === "scheduled" ? "success" : "muted"}>{selected.status}</Badge>}
             </CardHeader>
             <CardContent className="sync-detail">
-              <div className="sync-meta">
-                <div><span>When</span><b>{selected.day} {selected.time} · {selected.duration}</b></div>
-                <div><span>Lash route</span><b>{selected.lash}</b></div>
-                <div><span>Launch</span><code>{selected.command}</code></div>
-              </div>
-              <div className="sync-section">
-                <span>Agents</span>
-                <div className="agent-chip-row">
-                  {selected.agents.map((agentId) => <Badge key={agentId}>@{agentId}</Badge>)}
-                </div>
-              </div>
-              <div className="sync-section">
-                <span>Deliverables</span>
-                <ul>
-                  {selected.deliverables.map((deliverable) => <li key={deliverable}>{deliverable}</li>)}
-                </ul>
-              </div>
-              <label className="editor-field">
-                <span>Instructions</span>
-                <textarea defaultValue={`Run this scheduled agent sync.\n\nTopic: ${selected.topic}\nRoute: ${selected.lash}\n\nUse Lash to coordinate down the chain. Return deliverables only when each owner has reported back.`} />
-              </label>
+              {selected ? (
+                <>
+                  <div className="sync-meta">
+                    <div><span>When</span><b>{selected.day} {selected.time} · {selected.duration}</b></div>
+                    <div><span>Lash route</span><b>{selected.lash}</b></div>
+                    <div><span>Launch</span><code>{selected.command}</code></div>
+                  </div>
+                  <div className="sync-section">
+                    <span>Agents</span>
+                    <div className="agent-chip-row">
+                      {selected.agents.map((agentId) => <Badge key={agentId}>@{agentId}</Badge>)}
+                    </div>
+                  </div>
+                  <div className="sync-section">
+                    <span>Deliverables</span>
+                    <ul>
+                      {selected.deliverables.map((deliverable) => <li key={deliverable}>{deliverable}</li>)}
+                    </ul>
+                  </div>
+                  <label className="editor-field">
+                    <span>Instructions</span>
+                    <textarea value={`Run this scheduled agent sync.\n\nTopic: ${selected.topic}\nRoute: ${selected.lash}\n\n${selected.prompt}`} readOnly />
+                  </label>
+                </>
+              ) : (
+                <div className="thread-empty"><CalendarDays size={20} /><p>No scheduler jobs are visible from the runtime.</p></div>
+              )}
             </CardContent>
           </Card>
         </aside>
@@ -1224,7 +1667,7 @@ function monthLabelForSyncDay(day: string): string {
   return ({ Mon: "Apr 27", Tue: "Apr 28", Wed: "Apr 29", Thu: "Apr 30", Fri: "May 1", Sat: "May 2", Sun: "May 3" } as Record<string, string>)[day] ?? "Apr 27";
 }
 
-function ReportsPage() {
+function ReportsPage({ reports, rawEvents }: { reports: ReportRow[]; rawEvents: RuntimeEvent[] }) {
   const ready = reports.filter((report) => report.status === "ready").length;
   const blocked = reports.filter((report) => report.status === "blocked").length;
 
@@ -1246,7 +1689,7 @@ function ReportsPage() {
         <Kpi label="Reports" value={String(reports.length)} delta="visible to head node" />
         <Kpi label="Ready" value={String(ready)} delta="awaiting review" />
         <Kpi label="Blocked" value={String(blocked)} delta="needs owner" />
-        <Kpi label="Routes" value="4" delta="Lash-backed" />
+        <Kpi label="Routes" value={String(new Set(rawEvents.map((event) => event.threadId).filter(Boolean)).size)} delta="Lash-backed" />
       </section>
 
       <section className="dashboard-grid">
@@ -1303,7 +1746,7 @@ function ReportsPage() {
   );
 }
 
-function PluginsPage() {
+function PluginsPage({ plugins }: { plugins: PluginRow[] }) {
   const installed = plugins.filter((plugin) => plugin.status === "installed" || plugin.status === "configured" || plugin.status === "granted").length;
   return (
     <>
@@ -1384,7 +1827,7 @@ function PluginsPage() {
   );
 }
 
-function ProvidersPage() {
+function ProvidersPage({ providers }: { providers: ProviderRow[] }) {
   const connected = providers.filter((provider) => provider.status === "connected" || provider.status === "configured").length;
   return (
     <>
@@ -1465,12 +1908,277 @@ function ProvidersPage() {
   );
 }
 
-function MemoryPage() {
+function McpPage({ agents, plugins }: { agents: RuntimeAgentSnapshot[]; plugins: PluginRow[] }) {
+  const mcpPlugins = plugins.filter((plugin) => plugin.category === "MCP");
+  const granted = mcpPlugins.filter((plugin) => plugin.status === "granted").length;
+  const serverRows = agents.flatMap((agent) =>
+    (agent.mcp?.servers ?? []).map((server) => ({
+      agent: agent.profile,
+      server,
+      grant: agent.mcp?.grants?.[server.name],
+    })),
+  );
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">Agent tool fabric</p>
+          <h1>MCP</h1>
+          <p className="lede">Live MCP servers, grants, credentials, and tool exposure by agent. Auth remains agent-scoped.</p>
+        </div>
+        <div className="actions">
+          <Button variant="secondary"><McpIcon size={15} />Auth agent</Button>
+          <Button variant="laser"><ShieldCheck size={15} />Validate grants</Button>
+        </div>
+      </div>
+
+      <section className="kpi-grid">
+        <Kpi label="Servers" value={String(new Set(serverRows.map((row) => row.server.name)).size)} delta="from .mcp config" />
+        <Kpi label="Agent grants" value={String(granted)} delta="allowed envelopes" />
+        <Kpi label="Credentials" value={String(serverRows.filter((row) => row.server.credential?.configured).length)} delta="agent scoped" />
+        <Kpi label="Builtin tools" value={String(agents.reduce((sum, agent) => sum + (agent.mcp?.builtinTools?.length ?? 0), 0))} delta="local toolkit" />
+      </section>
+
+      <section className="dashboard-grid">
+        <Card className="span-8">
+          <CardHeader>
+            <div>
+              <CardTitle>MCP matrix</CardTitle>
+              <CardDescription>Every row is resolved from runtime agent snapshots and federation grants.</CardDescription>
+            </div>
+            <McpIcon size={16} />
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Agent</TableHead>
+                  <TableHead>Server</TableHead>
+                  <TableHead>Credential</TableHead>
+                  <TableHead>Grant</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {serverRows.map((row) => (
+                  <TableRow key={`${row.agent}-${row.server.name}`}>
+                    <TableCell className="name">@{row.agent}</TableCell>
+                    <TableCell>{row.server.name}</TableCell>
+                    <TableCell>{row.server.credential?.configured ? `${row.server.credential.source ?? "profile"}/${row.server.credential.kind ?? "credential"}` : "missing"}</TableCell>
+                    <TableCell><ProviderStatus status={row.grant?.allowed ? "ready" : "blocked"} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card className="span-4">
+          <CardHeader>
+            <div>
+              <CardTitle>Exposed tools</CardTitle>
+              <CardDescription>Grant-filtered tool envelopes.</CardDescription>
+            </div>
+            <PlugZap size={16} />
+          </CardHeader>
+          <CardContent className="plugin-list">
+            {serverRows.slice(0, 12).map((row) => (
+              <div className="plugin-row" key={`${row.agent}-${row.server.name}-tools`}>
+                <McpIcon size={15} />
+                <div>
+                  <div className="row-title">@{row.agent} / {row.server.name}</div>
+                  <div className="row-sub">{row.grant?.tools?.join(", ") || row.grant?.reason || "no tools exposed"}</div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </section>
+    </>
+  );
+}
+
+function WebhooksPage({ events }: { events: RuntimeEvent[] }) {
+  const webhookEvents = events.filter((event) => event.type === "webhook.received" || event.resource?.startsWith("webhook:"));
+  const sources = new Set(webhookEvents.map((event) => event.resource?.replace(/^webhook:/, "")).filter(Boolean));
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">Ingress</p>
+          <h1>Webhooks</h1>
+          <p className="lede">Signed external events entering the head node and becoming append-only control-plane audit records.</p>
+        </div>
+        <div className="actions">
+          <Button variant="secondary"><Webhook size={15} />Copy endpoint</Button>
+          <Button variant="laser"><ShieldCheck size={15} />Verify signature</Button>
+        </div>
+      </div>
+
+      <section className="kpi-grid">
+        <Kpi label="Webhook events" value={String(webhookEvents.length)} delta="live audit rows" />
+        <Kpi label="Sources" value={String(sources.size)} delta="observed" />
+        <Kpi label="Failures" value={String(events.filter((event) => event.resource?.startsWith("webhook:") && event.outcome === "failure").length)} delta="signature/body" />
+        <Kpi label="Endpoint" value="/api/webhooks/:source" delta="runtime" />
+      </section>
+
+      <section className="dashboard-grid">
+        <Card className="span-8">
+          <CardHeader>
+            <div>
+              <CardTitle>Webhook trail</CardTitle>
+              <CardDescription>Recently received ingress events from the runtime audit stream.</CardDescription>
+            </div>
+            <Webhook size={16} />
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Actor</TableHead>
+                  <TableHead>Outcome</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {webhookEvents.map((event) => (
+                  <TableRow key={event.id ?? `${event.ts}-${event.resource}`}>
+                    <TableCell className="name">{new Date(event.ts).toLocaleTimeString([], { hour12: false })}</TableCell>
+                    <TableCell>{event.resource ?? "webhook"}</TableCell>
+                    <TableCell>@{cleanProfile(event.actor) ?? "external"}</TableCell>
+                    <TableCell><ProviderStatus status={event.outcome === "failure" ? "blocked" : "ready"} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card className="span-4">
+          <CardHeader>
+            <div>
+              <CardTitle>Security contract</CardTitle>
+              <CardDescription>Runtime-enforced ingress rules.</CardDescription>
+            </div>
+            <ShieldCheck size={16} />
+          </CardHeader>
+          <CardContent className="plugin-list">
+            {[
+              ["Source id", "lowercase, bounded, path-safe"],
+              ["Body limit", "1 MB before audit write"],
+              ["Signature", "HMAC SHA-256 when source secret exists"],
+              ["Audit", "successful ingress becomes webhook.received"],
+            ].map(([title, detail]) => (
+              <div className="plugin-row" key={title}>
+                <Webhook size={15} />
+                <div>
+                  <div className="row-title">{title}</div>
+                  <div className="row-sub">{detail}</div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </section>
+    </>
+  );
+}
+
+function EnvironmentsPage({ environments, runtimes, reload }: { environments: EnvironmentRow[]; runtimes: RuntimeContract[]; reload(): Promise<void> }) {
+  async function ensureFirstRuntime() {
+    const profile = runtimes[0]?.profile;
+    if (!profile) return;
+    await ensureAgentRuntime(profile);
+    await reload();
+  }
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">Infrastructure</p>
+          <h1>Environments</h1>
+          <p className="lede">Live runtime contracts for compute, storage, ingress, workspace, secrets, and tool materialization.</p>
+        </div>
+        <div className="actions">
+          <Button variant="secondary"><LaptopMinimal size={15} />Render manifests</Button>
+          <Button variant="laser" onClick={() => void ensureFirstRuntime()}><Cpu size={15} />Ensure workspace</Button>
+        </div>
+      </div>
+
+      <section className="kpi-grid">
+        <Kpi label="Contracts" value={String(environments.length)} delta="agent runtimes" />
+        <Kpi label="Ready" value={String(environments.filter((env) => env.state === "ready").length)} delta="no warnings" />
+        <Kpi label="Blocked" value={String(environments.filter((env) => env.state === "blocked").length)} delta="warnings present" />
+        <Kpi label="Workspace" value={String(runtimes.filter((runtime) => runtime.workspace).length)} delta="materialized config" />
+      </section>
+
+      <section className="dashboard-grid">
+        <Card className="span-8">
+          <CardHeader>
+            <div>
+              <CardTitle>Runtime contracts</CardTitle>
+              <CardDescription>Resolved from each agent pack and runtime provider.</CardDescription>
+            </div>
+            <LaptopMinimal size={16} />
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Profile</TableHead>
+                  <TableHead>Compute</TableHead>
+                  <TableHead>Storage</TableHead>
+                  <TableHead>State</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {environments.map((environment) => (
+                  <TableRow key={`${environment.provider}-${environment.compute}`}>
+                    <TableCell className="name">{environment.provider}</TableCell>
+                    <TableCell>{environment.compute}</TableCell>
+                    <TableCell>{environment.storage}</TableCell>
+                    <TableCell><ProviderStatus status={environment.state} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card className="span-4">
+          <CardHeader>
+            <div>
+              <CardTitle>Ingress and secrets</CardTitle>
+              <CardDescription>Provider-neutral runtime shape.</CardDescription>
+            </div>
+            <ShieldCheck size={16} />
+          </CardHeader>
+          <CardContent className="plugin-list">
+            {runtimes.slice(0, 10).map((runtime, index) => (
+              <div className="plugin-row" key={`${runtime.profile}-${index}`}>
+                <LaptopMinimal size={15} />
+                <div>
+                  <div className="row-title">@{runtime.profile ?? "agent"}</div>
+                  <div className="row-sub">{summarizePayload(runtime.ingress)} · {summarizePayload(runtime.secrets)}</div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </section>
+    </>
+  );
+}
+
+function MemoryPage({ agents, memories, memoryEntries }: { agents: Agent[]; memories: MemoryStoreRow[]; memoryEntries: MemoryEntry[] }) {
   const [memoryView, setMemoryView] = useState<"memories" | "stores" | "promotion" | "internals">("memories");
   const [selectedAgent, setSelectedAgent] = useState("all");
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(memoryEntries[0]!.id);
-  const [draftText, setDraftText] = useState(memoryEntries[0]!.text);
+  const [selectedId, setSelectedId] = useState(memoryEntries[0]?.id ?? "");
+  const [draftText, setDraftText] = useState(memoryEntries[0]?.text ?? "");
   const [editingMemory, setEditingMemory] = useState(false);
   const total = memories.reduce((sum, memory) => sum + memory.entries, 0);
   const filteredEntries = memoryEntries.filter((entry) => {
@@ -1478,12 +2186,13 @@ function MemoryPage() {
     const queryText = `${entry.agent} ${entry.type} ${entry.scope} ${entry.source} ${entry.tags.join(" ")} ${entry.text}`.toLowerCase();
     return agentMatch && queryText.includes(query.toLowerCase());
   });
-  const selected = filteredEntries.find((entry) => entry.id === selectedId) ?? filteredEntries[0] ?? memoryEntries[0]!;
+  const selected = filteredEntries.find((entry) => entry.id === selectedId) ?? filteredEntries[0] ?? memoryEntries[0];
   useEffect(() => {
+    if (!selected) return;
     setDraftText(selected.text);
     setEditingMemory(false);
-  }, [selected.id, selected.text]);
-  const selectedStore = memories.find((memory) => memory.agent === selected.agent);
+  }, [selected?.id, selected?.text]);
+  const selectedStore = selected ? memories.find((memory) => memory.agent === selected.agent) : undefined;
 
   function selectMemory(id: string) {
     const next = memoryEntries.find((entry) => entry.id === id);
@@ -1559,7 +2268,7 @@ function MemoryPage() {
                 ) : filteredEntries.map((entry) => (
                   <button
                     key={entry.id}
-                    className={`memory-row ${entry.id === selected.id ? "active" : ""}`}
+                    className={`memory-row ${entry.id === selected?.id ? "active" : ""}`}
                     onClick={() => selectMemory(entry.id)}
                   >
                     <div className="memory-row-head">
@@ -1580,12 +2289,17 @@ function MemoryPage() {
             <CardHeader>
               <div>
                 <CardTitle>{editingMemory ? "Edit memory" : "Memory preview"}</CardTitle>
-                <CardDescription>{selected.source} · updated {selected.updated}</CardDescription>
+                <CardDescription>{selected ? `${selected.source} · updated ${selected.updated}` : "No runtime memories visible"}</CardDescription>
               </div>
               <ProviderStatus status={selectedStore?.status ?? "ready"} />
             </CardHeader>
             <CardContent className="memory-editor">
-              {!editingMemory ? (
+              {!selected ? (
+                <div className="memory-empty">
+                  <b>No memories exposed by runtime</b>
+                  <span>Prompt an agent or enable Honcho/local memory sync to populate this view.</span>
+                </div>
+              ) : !editingMemory ? (
                 <>
                   <div className="memory-preview">
                     <p>{selected.text}</p>
@@ -1733,7 +2447,7 @@ function MemoryPage() {
     </>
   );
 }
-function AuditLogsPage() {
+function AuditLogsPage({ events, rawEvents }: { events: EventRow[]; rawEvents: RuntimeEvent[] }) {
   return (
     <>
       <div className="page-head">
@@ -1750,9 +2464,9 @@ function AuditLogsPage() {
 
       <section className="kpi-grid">
         <Kpi label="Events" value={String(events.length)} delta="visible in this session" />
-        <Kpi label="Delegations" value="1" delta="down-chain" />
-        <Kpi label="Reports" value="1" delta="up-chain" />
-        <Kpi label="Tool calls" value="1" delta="federated grant" />
+        <Kpi label="Delegations" value={String(rawEvents.filter((event) => event.type.includes("delegate")).length)} delta="down-chain" />
+        <Kpi label="Reports" value={String(rawEvents.filter((event) => event.type.includes("report")).length)} delta="up-chain" />
+        <Kpi label="Tool calls" value={String(rawEvents.filter((event) => event.type.includes("tool")).length)} delta="federated grant" />
       </section>
 
       <section className="dashboard-grid">
@@ -1818,13 +2532,13 @@ function AuditLogsPage() {
   );
 }
 
-function DoctorPage() {
+function DoctorPage({ snapshot, agents, events }: { snapshot: RuntimeSnapshot; agents: Agent[]; events: RuntimeEvent[] }) {
   const checks = [
-    { name: "Head node", status: "ready", detail: "Local runtime process responding" },
-    { name: "Lash routes", status: "ready", detail: "Manager/direct-report visibility graph loaded" },
-    { name: "Model auth", status: "configured", detail: "OpenAI and Anthropic providers connected" },
-    { name: "MCP grants", status: "ready", detail: "Federated grants resolved for visible groups" },
-    { name: "Cloud runtimes", status: "blocked", detail: "Daytona terraform output pending" },
+    { name: "Head node", status: snapshot.connected ? "ready" : "blocked", detail: snapshot.connected ? `Runtime ${snapshot.runtime?.runtimeId ?? snapshot.health?.runtimeId ?? "connected"}` : snapshot.error ?? "Runtime not reachable" },
+    { name: "Agent profiles", status: agents.length ? "ready" : "blocked", detail: `${agents.length} live profiles resolved from runtime config` },
+    { name: "Lash routes", status: events.some((event) => event.type.startsWith("lash.")) ? "ready" : "configured", detail: `${events.filter((event) => event.type.startsWith("lash.")).length} Lash events visible` },
+    { name: "MCP grants", status: snapshot.agents.some((agent) => Object.values(agent.mcp?.grants ?? {}).some((grant) => grant.allowed)) ? "ready" : "configured", detail: "Federated grants resolved from agent snapshots" },
+    { name: "Scheduler", status: snapshot.scheduler.jobs.length ? "ready" : "blocked", detail: `${snapshot.scheduler.jobs.length} jobs · ${snapshot.scheduler.runs.length} runs` },
   ];
 
   return (
@@ -1960,19 +2674,22 @@ function StatusBadge({ status }: { status: AgentStatus }) {
   return <Badge tone={tone}><span className={`status-dot ${status}`} />{status}</Badge>;
 }
 
-function OrgGraph() {
+function OrgGraph({ agents }: { agents: Agent[] }) {
+  const roots = agents.filter((agent) => !agent.manager);
+  const top = roots[0];
   return (
     <div className="org-graph">
-      <div className="org-node root">@coo</div>
+      <div className="org-node root">@{top?.id ?? "none"}</div>
       <div className="org-branches">
-        {["vp-ops", "vp-eng", "vp-gtm", "vp-finance"].map((node) => (
-          <div className="org-branch" key={node}>
+        {agents.filter((agent) => agent.manager === top?.id).slice(0, 6).map((agent) => (
+          <div className="org-branch" key={agent.id}>
             <div className="org-line" />
-            <div className={node === "vp-eng" ? "org-node active" : "org-node"}>@{node}</div>
-            {node === "vp-eng" && (
+            <div className={agent.status === "live" ? "org-node active" : "org-node"}>@{agent.id}</div>
+            {agents.some((candidate) => candidate.manager === agent.id) && (
               <div className="org-children">
-                <div className="org-node small">@dir-eng-infra</div>
-                <div className="org-node small">@dir-eng-product</div>
+                {agents.filter((candidate) => candidate.manager === agent.id).slice(0, 3).map((child) => (
+                  <div className="org-node small" key={child.id}>@{child.id}</div>
+                ))}
               </div>
             )}
           </div>

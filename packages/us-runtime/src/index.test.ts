@@ -924,6 +924,32 @@ test("POSTAgentPrompt_WhenHeadNodeUsesRemoteMcpTool_ThreadsToolCallUsageSessionA
   ).toBe(4);
 });
 
+test("GETAgents_WhenLegacyProfileIsMissingAgentPack_ReturnsPartialSnapshotInsteadOfPoisoningFleet", async () => {
+  await core.initProfile("legacy-packless", { role: "operator" });
+  await rm(core.profilePaths("legacy-packless").agentPack, { force: true });
+
+  const { response, body } = await fetchJson("/api/agents");
+  const legacy = body.agents.find((agent: any) => agent.profile === "legacy-packless");
+
+  expectStatus(response, 200, "one legacy profile without agent.yaml must not make the whole fleet API unusable");
+  expect(legacy, "The packless legacy profile should still appear so the dashboard can show and repair it.").toBeDefined();
+  expect(legacy.pack, "The runtime should represent the missing atomic pack explicitly, not synthesize fake pack data.").toBeUndefined();
+  expect(legacy.runtime.workspace, "Legacy profile config should still contribute the concrete runtime workspace contract.").toBeDefined();
+});
+
+test("GETAgents_WhenAgentPackIsCorrupt_FailsHardInsteadOfSynthesizingRuntimeConfig", async () => {
+  await core.initProfile("corrupt-pack", { role: "operator" });
+  await writeFile(core.profilePaths("corrupt-pack").agentPack, "version: [not valid");
+
+  const { response, body } = await fetchJson("/api/agents");
+
+  expectStatus(response, 500, "corrupt agent.yaml is a real configuration error and must not be treated like a missing legacy pack");
+  expect(
+    body.message,
+    "The runtime should surface parser failure context so operators can repair the broken atomic agent pack.",
+  ).toContain("unexpected end of the stream");
+});
+
 async function fetchJson(path: string): Promise<{ response: Response; body: any }> {
   const response = await fetchHandler(new Request(`http://runtime.test${path}`));
   const body = await response.json();

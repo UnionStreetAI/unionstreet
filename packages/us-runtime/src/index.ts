@@ -315,7 +315,7 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
 
 async function agentSnapshot(profile: string, cwd: string) {
   const [pack, runtime, principal, delegationTargets, mcpStatus, memorySync, sessions] = await Promise.all([
-    readAgentPack(profile),
+    readOptionalRuntimeAgentPack(profile),
     resolveAgentRuntime(profile),
     resolveAgentPrincipal(profile),
     resolveDelegationTargets(profile),
@@ -338,6 +338,15 @@ async function agentSnapshot(profile: string, cwd: string) {
     memory: memorySync,
     sessions,
   };
+}
+
+async function readOptionalRuntimeAgentPack(profile: string) {
+  try {
+    return await readAgentPack(profile);
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  }
 }
 
 function eventStream(query: EventQuery): Response {
