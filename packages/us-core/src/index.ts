@@ -372,3 +372,12 @@ export {
   authKeyToRegistryId,
 } from "./models-dev.ts";
 export type { Registry, RegistryProvider, RegistryModel } from "./models-dev.ts";
+
+export {
+  discoverModelGroups,
+} from "./model-discovery.ts";
+export type {
+  DiscoveredModel,
+  DiscoveredModelGroup,
+  ModelDiscoveryOptions,
+} from "./model-discovery.ts";

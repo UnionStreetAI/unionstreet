@@ -13,6 +13,7 @@ export interface RuntimeSnapshot {
     runs: RuntimeSchedulerRun[];
   };
   memory: RuntimeMemoryEvent[];
+  models: RuntimeModelGroup[];
 }
 
 export interface RuntimeHealth {
@@ -80,6 +81,22 @@ export interface RuntimeAgentSnapshot {
   };
   memory?: Record<string, unknown>;
   sessions?: RuntimeSession[];
+}
+
+export interface RuntimeModelGroup {
+  id: string;
+  label: string;
+  authMethod: string;
+  state: "live" | "fallback" | "error" | string;
+  baseUrl?: string;
+  models: RuntimeModel[];
+}
+
+export interface RuntimeModel {
+  id: string;
+  description?: string;
+  display_name?: string;
+  context_window?: number;
 }
 
 export interface RuntimeContract {
@@ -247,10 +264,17 @@ export async function loadRuntimeSnapshot(signal?: AbortSignal): Promise<Runtime
       usage,
       scheduler: { jobs: jobs.jobs, runs: runs.runs },
       memory: memory.memory,
+      models: [],
     };
   } catch (error) {
     return emptyRuntimeSnapshot(baseUrl, (error as Error).message);
   }
+}
+
+export async function loadRuntimeModels(profile?: string, signal?: AbortSignal): Promise<RuntimeModelGroup[]> {
+  const query = profile ? `?profile=${encodeURIComponent(profile)}` : "";
+  const response = await runtimeJson<{ groups: RuntimeModelGroup[] }>(`/api/models${query}`, { signal });
+  return response.groups;
 }
 
 export async function sendAgentPrompt(
@@ -346,6 +370,7 @@ function emptyRuntimeSnapshot(baseUrl: string, error: string): RuntimeSnapshot {
     usage: { usage: [], summary: {} },
     scheduler: { jobs: [], runs: [] },
     memory: [],
+    models: [],
   };
 }
 

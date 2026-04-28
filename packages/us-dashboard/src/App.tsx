@@ -40,11 +40,12 @@ import { AgentFleet } from "./components/agent-fleet";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
-import { ModelSelector, type DashboardModelGroup, type ModelSelection } from "./components/model-selector";
+import { ModelSelector, type DashboardModel, type DashboardModelGroup, type ModelSelection } from "./components/model-selector";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import {
   loadRuntimeSnapshot,
+  loadRuntimeModels,
   ensureAgentRuntime,
   runSchedulerTick,
   sendAgentPrompt,
@@ -53,6 +54,7 @@ import {
   type RuntimeContract,
   type RuntimeEvent,
   type RuntimeMemoryEvent,
+  type RuntimeModelGroup,
   type RuntimeSchedulerJob,
   type RuntimeSchedulerRun,
   type RuntimeSnapshot,
@@ -466,6 +468,7 @@ function useRuntimeDashboard(): DashboardData {
     usage: { usage: [], summary: {} },
     scheduler: { jobs: [], runs: [] },
     memory: [],
+    models: [],
   }));
 
   async function reload(signal?: AbortSignal) {
@@ -499,7 +502,7 @@ function useRuntimeDashboard(): DashboardData {
   const eventRows = useMemo(() => rawEvents.map(eventRowFromRuntime), [rawEvents]);
   const memoryRows = useMemo(() => memoryEntriesFromRuntime(snapshot.memory), [snapshot.memory]);
   const memoryStores = useMemo(() => memoryStoresFromRuntime(snapshot.agents, snapshot.memory), [snapshot.agents, snapshot.memory]);
-  const modelGroupsLive = useMemo(() => modelGroupsFromRuntime(snapshot.agents), [snapshot.agents]);
+  const modelGroupsLive = useMemo(() => modelGroupsFromRuntimeModels(snapshot.models), [snapshot.models]);
   const statusCounts = useMemo(() => ({
     live: agents.filter((agent) => agent.status === "live").length,
     idle: agents.filter((agent) => agent.status === "idle").length,
@@ -517,7 +520,7 @@ function useRuntimeDashboard(): DashboardData {
     memoryStores,
     reports: reportsFromEvents(rawEvents, agents),
     environments: environmentsFromRuntime(snapshot),
-    providers: providersFromRuntime(snapshot.agents),
+    providers: providersFromRuntime(snapshot.agents, modelGroupsLive),
     plugins: pluginsFromRuntime(snapshot),
     modelGroups: modelGroupsLive.length ? modelGroupsLive : modelGroups,
     statusCounts,
@@ -877,33 +880,28 @@ function memoryStoresFromRuntime(agents: RuntimeAgentSnapshot[], memory: Runtime
   }));
 }
 
-function modelGroupsFromRuntime(agents: RuntimeAgentSnapshot[]): DashboardModelGroup[] {
-  const byProvider = new Map<string, DashboardModelGroup>();
-  for (const agent of agents) {
-    const chain = agent.modelChain?.length ? agent.modelChain : [
-      agent.model ?? agent.pack?.model?.primary ?? { provider: "codex", id: "gpt-5.4" },
-      ...(agent.pack?.model?.fallback ?? []),
-    ];
-    const primary = chain[0] ?? { provider: "codex", id: "gpt-5.4" };
-    const provider = primary.provider ?? "codex";
-    const id = primary.id ?? "gpt-5.4";
-    const group = byProvider.get(provider) ?? { id: provider, label: normalizedProviderLabel(provider), models: [] };
-    if (!group.models.some((model) => model.id === id)) {
-      group.models.push({ id, name: normalizedDisplayModel(id), recent: true });
-    }
-    for (const fallback of chain.slice(1)) {
-      const fallbackProvider = fallback.provider ?? provider;
-      const fallbackId = fallback.id ?? "";
-      if (!fallbackId) continue;
-      const fallbackGroup = byProvider.get(fallbackProvider) ?? { id: fallbackProvider, label: normalizedProviderLabel(fallbackProvider), models: [] };
-      if (!fallbackGroup.models.some((model) => model.id === fallbackId)) {
-        fallbackGroup.models.push({ id: fallbackId, name: normalizedDisplayModel(fallbackId) });
-      }
-      byProvider.set(fallbackProvider, fallbackGroup);
-    }
-    byProvider.set(provider, group);
-  }
-  return [...byProvider.values()];
+function modelGroupsFromRuntimeModels(groups: RuntimeModelGroup[]): DashboardModelGroup[] {
+  return groups
+    .map((group) => ({
+      id: group.id,
+      label: group.label,
+      models: group.models.map((model) => {
+        const row = {
+          id: model.id,
+          name: model.display_name ?? normalizedDisplayModel(model.id),
+          recent: group.state === "live",
+        } as DashboardModel;
+        if (model.context_window) row.context = formatContextWindow(model.context_window);
+        return row;
+      }),
+    }))
+    .filter((group) => group.models.length > 0);
+}
+
+function formatContextWindow(tokens: number): string {
+  if (tokens >= 1_000_000) return `${Math.round(tokens / 1_000_000)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
+  return String(tokens);
 }
 
 function reportsFromEvents(events: RuntimeEvent[], agents: Agent[]): ReportRow[] {
@@ -927,7 +925,16 @@ function environmentsFromRuntime(snapshot: RuntimeSnapshot): EnvironmentRow[] {
   }));
 }
 
-function providersFromRuntime(agents: RuntimeAgentSnapshot[]): ProviderRow[] {
+function providersFromRuntime(agents: RuntimeAgentSnapshot[], modelGroups: DashboardModelGroup[]): ProviderRow[] {
+  if (modelGroups.length) {
+    return modelGroups.map((group) => ({
+      name: normalizedProviderLabel(group.id),
+      kind: group.id.includes("oauth") || group.id === "openai-codex" || group.id === "codex" ? "oauth/profile" : "configured",
+      status: "connected",
+      models: group.models.slice(0, 3).map((model) => normalizedDisplayModel(model.name ?? model.id)).join(", ") || "none",
+      baseUrl: group.label,
+    }));
+  }
   const modelsByProvider = new Map<string, Set<string>>();
   for (const agent of agents) {
     const provider = agent.model?.provider ?? agent.pack?.model?.primary?.provider ?? "codex";
@@ -1061,7 +1068,9 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
 function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: DashboardModelGroup[] }) {
   const [selectedAgentId, setSelectedAgentId] = useState("coo");
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
-  const initialModel = modelSelectionForAgent(selectedAgent, modelGroups);
+  const [agentModelGroups, setAgentModelGroups] = useState<DashboardModelGroup[]>(modelGroups);
+  const activeModelGroups = agentModelGroups.length ? agentModelGroups : modelGroups;
+  const initialModel = modelSelectionForAgent(selectedAgent, activeModelGroups);
   const [selectedModel, setSelectedModel] = useState<ModelSelection>(initialModel);
   const [defaultModel, setDefaultModel] = useState<ModelSelection>(initialModel);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -1074,15 +1083,32 @@ function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: Dashb
 
   useEffect(() => {
     if (!selectedAgent) return;
+    const controller = new AbortController();
+    setAgentModelGroups(modelGroups);
+    loadRuntimeModels(selectedAgent.id, controller.signal)
+      .then((groups) => {
+        if (!controller.signal.aborted) {
+          const discovered = modelGroupsFromRuntimeModels(groups);
+          setAgentModelGroups(discovered.length ? discovered : modelGroups);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setAgentModelGroups(modelGroups);
+      });
+    return () => controller.abort();
+  }, [modelGroups, selectedAgent]);
+
+  useEffect(() => {
+    if (!selectedAgent) return;
     if (selectedAgentId !== selectedAgent.id) setSelectedAgentId(selectedAgent.id);
     const agentModelKey = `${selectedAgent.id}:${selectedAgent.modelProvider ?? ""}/${selectedAgent.modelId ?? selectedAgent.model}`;
     if (lastSyncedAgentKey.current !== agentModelKey) {
-      const nextModel = modelSelectionForAgent(selectedAgent, modelGroups);
+      const nextModel = modelSelectionForAgent(selectedAgent, activeModelGroups);
       lastSyncedAgentKey.current = agentModelKey;
       setSelectedModel(nextModel);
       setDefaultModel(nextModel);
     }
-  }, [modelGroups, selectedAgent, selectedAgentId]);
+  }, [activeModelGroups, selectedAgent, selectedAgentId]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -1092,7 +1118,7 @@ function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: Dashb
     const next = agents.find((agent) => agent.id === id);
     setSelectedAgentId(id);
     if (next) {
-      const nextModel = modelSelectionForAgent(next, modelGroups);
+      const nextModel = modelSelectionForAgent(next, activeModelGroups);
       lastSyncedAgentKey.current = `${next.id}:${next.modelProvider ?? ""}/${next.modelId ?? next.model}`;
       setSelectedModel(nextModel);
       setDefaultModel(nextModel);
@@ -1233,7 +1259,7 @@ function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: Dashb
                   <div className="model-pill">
                     <ModelSelector
                       compact
-                      groups={modelGroups}
+                      groups={activeModelGroups}
                       value={selectedModel}
                       defaultValue={defaultModel}
                       onChange={setSelectedModel}
@@ -1286,7 +1312,7 @@ function ChatPage({ agents, modelGroups }: { agents: Agent[]; modelGroups: Dashb
               <label className="field">
                 <span>Model</span>
                 <ModelSelector
-                  groups={modelGroups}
+                  groups={activeModelGroups}
                   value={selectedModel}
                   defaultValue={defaultModel}
                   onChange={setSelectedModel}

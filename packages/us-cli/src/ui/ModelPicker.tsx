@@ -23,22 +23,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import type { MouseEvent } from "@opentui/core";
 import {
-  CODEX_MODELS,
-  CODEX_PROVIDER,
-  listCodexModels,
-  listOpenAIModels,
-  type LiveCodexModel,
-} from "@unionstreet/ai-codex";
-import {
-  resolveAuthProfiles,
-  findProvider,
-  getModelsForAuthKey,
-  getProviderLabel,
-  sanitizeOpenAICompatBaseUrl,
-  type AuthProfilesFile,
-  type ApiKeyCred,
-  type OAuthCred,
-  type RegistryModel,
+  discoverModelGroups,
+  type DiscoveredModelGroup,
 } from "@unionstreet/us-core";
 import { C, ATTR_BOLD } from "./theme.ts";
 
@@ -56,51 +42,8 @@ export interface ModelPickerProps {
   onCancel(): void;
 }
 
-/**
- * Default OpenAI-compatible API roots for known providers. Used when the
- * cred itself doesn't carry a `base_url`. Providers not in this map and
- * without a base_url fall through to KNOWN_MODELS (or get skipped).
- */
-const OPENAI_COMPAT_BASE: Record<string, string> = {
-  openai: "https://api.openai.com/v1",
-  openrouter: "https://openrouter.ai/api/v1",
-  groq: "https://api.groq.com/openai/v1",
-  fireworks: "https://api.fireworks.ai/inference/v1",
-  together: "https://api.together.xyz/v1",
-  cerebras: "https://api.cerebras.ai/v1",
-  mistral: "https://api.mistral.ai/v1",
-  perplexity: "https://api.perplexity.ai",
-  xai: "https://api.x.ai/v1",
-  deepinfra: "https://api.deepinfra.com/v1/openai",
-  "opencode-zen": "https://api.opencode.ai/v1",
-  "vercel-ai-gateway": "https://gateway.ai.vercel.ai/v1",
-};
-
-/**
- * For UI labeling only. The model lists themselves come from models.dev
- * (or live /v1/models when applicable) — never hardcoded here.
- */
-const PROVIDER_LABEL_HINTS: Record<string, string> = {
-  codex: "OPENAI · CHATGPT",
-  claude: "ANTHROPIC · CLAUDE PRO",
-};
-
-interface DisplayModel {
-  id: string;
-  description: string;
-  display_name?: string;
-  context_window?: number;
-}
-
-interface ProviderGroup {
-  id: string;
-  label: string;
-  authMethod: string;
-  models: DisplayModel[];
-  baseUrl?: string;
-  /** "loading" | "live" | "fallback" | "error" */
-  state: "loading" | "live" | "fallback" | "error";
-}
+type DisplayModel = DiscoveredModelGroup["models"][number];
+type ProviderGroup = DiscoveredModelGroup;
 
 type Row =
   | { kind: "header"; title: string }
@@ -203,11 +146,9 @@ export function ModelPicker({
                 normalizedModelName(m).toLowerCase().includes(q),
             );
 
-      // Always show authed groups — even when empty — so the user can
-      // see what they configured. Placeholder rows explain WHY a group
-      // is empty (still loading vs. no /models endpoint discovered).
-      const shouldRender =
-        matched.length > 0 || (!q && (g.state === "loading" || g.state === "fallback" || g.state === "error"));
+      // Always show authed groups that could not enumerate models so the
+      // user can see what they configured and why it is not selectable.
+      const shouldRender = matched.length > 0 || (!q && (g.state === "fallback" || g.state === "error"));
       if (!shouldRender) continue;
 
       out.push({ kind: "header", title: normalizedProviderName(g) });
@@ -225,9 +166,7 @@ export function ModelPicker({
           kind: "placeholder",
           group: g,
           message:
-            g.state === "loading"
-              ? "loading models…"
-              : g.state === "error"
+            g.state === "error"
               ? "couldn't list models for this provider"
               : "no models discovered yet",
         });
@@ -324,12 +263,10 @@ export function ModelPicker({
   const hiddenAbove = start;
   const hiddenBelow = Math.max(0, rows.length - start - viewportRows);
 
-  // Header status text top-right (loading/live count/etc.)
-  const codexGroup = groups.find((g) => g.id === CODEX_PROVIDER.id);
+  // Header status text top-right (live count/etc.)
+  const codexGroup = groups.find((g) => g.id === "openai-codex");
   const statusLabel =
-    codexGroup?.state === "loading"
-      ? "loading…"
-      : codexGroup?.state === "live"
+    codexGroup?.state === "live"
       ? `${codexGroup.models.length} models · live`
       : codexGroup?.state === "error"
       ? "offline list"
@@ -553,22 +490,6 @@ function normalizedProviderName(group: ProviderGroup): string {
   return titleWords(group.label.replace(/\s*·.*$/, "").replace(/\([^)]*\)/g, " "));
 }
 
-function providerLabelForAuthKey(
-  key: string,
-  baseUrl: string | undefined,
-  catalogName: string | undefined,
-  registryName: string | undefined,
-): string {
-  const baseKey = providerBaseKey(key);
-  if (PROVIDER_LABEL_HINTS[baseKey]) return PROVIDER_LABEL_HINTS[baseKey];
-  if (baseKey === "custom-openai-compat" && baseUrl) {
-    return titleWords(providerNameFromUrl(baseUrl));
-  }
-  if (registryName) return registryName;
-  if (catalogName) return catalogName;
-  return titleWords(baseKey.replace(/[-_]+/g, " "));
-}
-
 function titleModelName(raw: string): string {
   const leaf = raw.split("/").filter(Boolean).at(-1) ?? raw;
   return titleWords(
@@ -646,146 +567,6 @@ async function enumerateProviderGroups(
   profile: string,
   onGroup: (g: ProviderGroup) => void,
 ): Promise<void> {
-  let auth: AuthProfilesFile;
-  try {
-    const resolved = await resolveAuthProfiles(profile);
-    auth = resolved.merged;
-  } catch {
-    return;
-  }
-  const entries = Object.entries(auth.providers).sort(([a], [b]) => {
-    const rank = (key: string) => {
-      const baseKey = providerBaseKey(key);
-      if (baseKey === "codex" || baseKey === "openai" || baseKey === "openai-codex") return 0;
-      if (baseKey === "claude" || baseKey === "anthropic" || baseKey === "anthropic-oauth") return 1;
-      return 2;
-    };
-    const ar = rank(a);
-    const br = rank(b);
-    return ar === br ? a.localeCompare(b) : ar - br;
-  });
-
-  // Always try Codex even if not in providers (default install). If there's
-  // no codex auth we get nothing back; the group renders as fallback.
-  const codexCred = auth.providers.codex;
-  if (codexCred?.kind === "oauth") {
-    onGroup({
-      id: CODEX_PROVIDER.id,
-      label: CODEX_PROVIDER.label,
-      authMethod: CODEX_PROVIDER.authMethod,
-      models: CODEX_MODELS.map((m) => ({ id: m.id, description: m.description })),
-      state: "loading",
-    });
-    listCodexModels({ token: (codexCred as OAuthCred).access })
-      .then((live: LiveCodexModel[]) => {
-        if (live.length === 0) return;
-        onGroup({
-          id: CODEX_PROVIDER.id,
-          label: CODEX_PROVIDER.label,
-          authMethod: CODEX_PROVIDER.authMethod,
-          models: live.map((m) => ({
-            id: m.id,
-            description: m.description,
-            display_name: m.display_name,
-            context_window: m.context_window,
-          })),
-          state: "live",
-        });
-      })
-      .catch(() => {
-        onGroup({
-          id: CODEX_PROVIDER.id,
-          label: CODEX_PROVIDER.label,
-          authMethod: CODEX_PROVIDER.authMethod,
-          models: CODEX_MODELS.map((m) => ({ id: m.id, description: m.description })),
-          state: "error",
-        });
-      });
-  }
-
-  for (const [key, cred] of entries) {
-    if (key === "codex") continue; // handled above
-
-    const baseKey = providerBaseKey(key);
-    const info = findProvider(baseKey);
-    const authMethod = cred.kind === "oauth" ? "oauth" : "api key";
-
-    // Resolve a label, preferring (in order):
-    //   1. an explicit hint (codex / claude),
-    //   2. the models.dev registry's "name" for this provider,
-    //   3. the curated PROVIDERS catalog name,
-    //   4. uppercased auth key as last resort.
-    const baseUrl =
-      cred.kind === "api_key"
-        ? sanitizeOpenAICompatBaseUrl((cred as ApiKeyCred).base_url ?? OPENAI_COMPAT_BASE[baseKey] ?? "")
-        : undefined;
-    const fallbackLabel = providerLabelForAuthKey(key, baseUrl, info?.name, undefined);
-
-    // Step 1: render group immediately with whatever the registry knows.
-    // No hardcoded fallbacks — the registry IS the fallback.
-    onGroup({
-      id: key,
-      label: fallbackLabel,
-      authMethod,
-      baseUrl,
-      models: [],
-      state: "loading",
-    });
-
-    void Promise.all([
-      getModelsForAuthKey(key).catch((): RegistryModel[] => []),
-      getProviderLabel(key).catch((): string | undefined => undefined),
-    ]).then(([registryModels, registryLabel]) => {
-      const label = providerLabelForAuthKey(key, baseUrl, info?.name, registryLabel) ?? fallbackLabel;
-      const baselineModels: DisplayModel[] = registryModels.map((m) => ({
-        id: m.id,
-        description: m.name ?? "",
-        display_name: m.name,
-        context_window: m.limit?.context,
-      }));
-      onGroup({
-        id: key,
-        label,
-        authMethod,
-        baseUrl,
-        models: baselineModels,
-        state: baselineModels.length ? "fallback" : "loading",
-      });
-
-      // Step 2: try to live-fetch via OpenAI-compat /models. On success,
-      // it overrides the registry baseline (it's authoritative for what
-      // THIS account can actually call). On failure, baseline stays.
-      if (cred.kind !== "api_key") return;
-      const apiCred = cred as ApiKeyCred;
-      if (!baseUrl) return;
-
-      listOpenAIModels({ baseUrl, apiKey: apiCred.api_key })
-        .then((live: LiveCodexModel[]) => {
-          if (live.length === 0) return;
-          onGroup({
-            id: key,
-            label,
-            authMethod,
-            baseUrl,
-            models: live.map((m) => ({
-              id: m.id,
-              description: m.description,
-              display_name: m.display_name,
-              context_window: m.context_window,
-            })),
-            state: "live",
-          });
-        })
-        .catch(() => {
-          onGroup({
-            id: key,
-            label,
-            authMethod,
-            baseUrl,
-            models: baselineModels,
-            state: baselineModels.length ? "fallback" : "error",
-          });
-        });
-    });
-  }
+  const groups = await discoverModelGroups({ profile });
+  for (const group of groups) onGroup(group);
 }

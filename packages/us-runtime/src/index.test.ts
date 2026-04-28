@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,6 +8,7 @@ import { startDummyMcpServer, type DummyMcpServerHandle } from "../../us-core/sr
 const usHome = await mkdtemp(join(tmpdir(), "union-street-runtime-test-"));
 const workdir = await mkdtemp(join(tmpdir(), "union-street-runtime-work-"));
 const previousAllowPrivateMcpUrls = process.env.US_MCP_ALLOW_PRIVATE_URLS;
+const originalFetch = globalThis.fetch;
 process.env.US_HOME = usHome;
 process.env.HOME = workdir;
 process.env.US_MEMORY_SYNC = "0";
@@ -77,6 +78,10 @@ afterAll(async () => {
   await rm(workdir, { recursive: true, force: true });
 });
 
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
 test("GETHealth_WhenRuntimeIsConfigured_ReturnsLiveHeadNodeMetadata", async () => {
   const healthRoute = "/health";
 
@@ -144,6 +149,49 @@ test("GETAgentDetail_WhenProfileIsCoo_ReturnsIdentityDelegationMcpMemoryAndSessi
   expect(coo.mcp.grants.github.allowed, "MCP grants must resolve per agent/server so the UI can explain tool access.").toBe(true);
   expect(coo.memory.enabled, "Tests run with memory sync disabled and the API must reflect that exact configuration.").toBe(false);
   expect(Array.isArray(coo.sessions), "Agent detail must include a sessions array even when the profile has no session files.").toBe(true);
+});
+
+test("GETModels_WhenProfileHasProviderAuth_ReturnsAuthAwareDiscoveredModelGroups", async () => {
+  await core.updateAuthProfiles(core.GLOBAL_AUTH_PROFILES_PATH, (current) => ({
+    ...current,
+    providers: {
+      "custom-openai-compat:runtime-test": {
+        kind: "api_key",
+        api_key: "sk-runtime-test",
+        base_url: "https://models.runtime.test/v1/chat/completions",
+      },
+    },
+  }));
+  const requestedUrls: string[] = [];
+  globalThis.fetch = (async (url) => {
+    requestedUrls.push(String(url));
+    if (String(url).includes("models.dev/api.json")) return Response.json({});
+    if (String(url) === "https://models.runtime.test/v1/models") {
+      return Response.json({ data: [{ id: "runtime-live-model", name: "Runtime Live Model", context_length: 64_000 }] });
+    }
+    return new Response("not found", { status: 404 });
+  }) as typeof fetch;
+  const modelsRoute = "/api/models?profile=coo";
+
+  const { response, body } = await fetchJson(modelsRoute);
+
+  expectStatus(response, 200, "model discovery should be exposed through the runtime API for browser and TUI clients");
+  expect(body.profile, "The runtime should echo the profile used for merged auth-profile resolution.").toBe("coo");
+  expect(body.groups, "The runtime should return auth-aware model groups, not models inferred from currently configured agents.").toEqual([
+    {
+      id: "custom-openai-compat:runtime-test",
+      label: "Test Runtime Models",
+      authMethod: "api key",
+      baseUrl: "https://models.runtime.test/v1",
+      state: "live",
+      models: [{ id: "runtime-live-model", description: "", display_name: "Runtime Live Model", context_window: 64_000 }],
+    },
+  ]);
+  expect(
+    requestedUrls,
+    "The runtime model route must sanitize pasted chat-completions URLs before trying provider discovery.",
+  ).toContain("https://models.runtime.test/v1/models");
+  expect(JSON.stringify(body), "Model discovery responses must not leak provider API keys to the dashboard.").not.toContain("sk-runtime-test");
 });
 
 test("POSTAgentPrompt_WhenPromptIsProvided_RunsRealAgentLoopAndPersistsSession", async () => {

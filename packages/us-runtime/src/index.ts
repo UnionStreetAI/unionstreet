@@ -10,6 +10,7 @@ import {
   FileMemoryStore,
   US_HOME,
   claimDueSchedulerJobs,
+  discoverModelGroups,
   dueSchedulerJobs,
   executeSchedulerRun,
   ensureAgentWorkspace,
@@ -119,6 +120,7 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
         "/api/runtime",
         "/api/agents",
         "/api/runtimes",
+        "/api/models",
         "/api/events",
         "/api/events/stream",
         "/api/usage",
@@ -140,6 +142,15 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
     const profile = await readExistingProfile(parts[2]);
     if (!profile.ok) return json(profile.body, profile.status);
     return json(await agentSnapshot(profile.profile, cwd));
+  }
+
+  if (request.method === "GET" && parts[1] === "models" && parts.length === 2) {
+    const profileResult = await readOptionalExistingProfileParam(url);
+    if (!profileResult.ok) return json(profileResult.body, profileResult.status);
+    return json({
+      profile: profileResult.profile,
+      groups: await discoverModelGroups({ profile: profileResult.profile }),
+    });
   }
 
   if (request.method === "POST" && parts[1] === "agents" && parts[2] && parts[3] === "prompt" && parts.length === 4) {
