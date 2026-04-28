@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -17,6 +17,7 @@ const { profileList, profileUse } = await import("./profile.ts");
 const { schedulerCommand } = await import("./scheduler.ts");
 const { eventsCommand } = await import("./events.ts");
 const { runtimeEnsure, runtimeStatus } = await import("./runtime.ts");
+const { mcpCommand } = await import("./mcp.ts");
 const { loadProfileRuntime } = await import("./chat.tsx");
 
 beforeAll(async () => {
@@ -159,4 +160,133 @@ describe("CLI control-plane commands", () => {
       "Invalid scheduler time input should fail before scanning jobs so CLI users can correct the flag.",
     ).rejects.toThrow("Invalid --now value");
   });
+
+  test("mcpCommand_WhenRemoteDeviceOAuthCallbackIsProvided_SavesAgentScopedTokenWithoutInteractivePrompt", async () => {
+    const tokenRequests: string[] = [];
+    process.env.US_TEST_MCP_CALLBACK = "https://remote.example.com/mcp/callback?code=remote-device-code";
+    const tokenServer = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const body = await request.text();
+        tokenRequests.push(body);
+        return Response.json({
+          access_token: "linear-access-token",
+          refresh_token: "linear-refresh-token",
+          expires_in: 3600,
+          scope: "issues:read",
+          token_type: "Bearer",
+        });
+      },
+    });
+    try {
+      const output = await captureOutput(() => mcpCommand("auth", "linear", {
+        profile: "coo",
+        oauth: true,
+        authUrl: "https://linear.example.com/oauth/authorize",
+        tokenUrl: `${tokenServer.url.origin}/token`,
+        clientId: "union-street-cli",
+        redirectUri: "https://remote.example.com/mcp/callback",
+        scope: "issues:read",
+        callbackEnv: "US_TEST_MCP_CALLBACK",
+      }));
+      const credential = await core.getMcpCredential("coo", "linear");
+
+      expect(output, "MCP OAuth should still print a success message for remote-device auth flows.").toContain("saved OAuth token");
+      expect(
+        tokenRequests[0],
+        "Remote-device OAuth exchange must submit the pasted code, redirect URI, client id, and PKCE verifier to the token endpoint.",
+      ).toContain("code=remote-device-code");
+      expect(tokenRequests[0], "Remote-device OAuth exchange must preserve the configured redirect URI.").toContain("redirect_uri=https%3A%2F%2Fremote.example.com%2Fmcp%2Fcallback");
+      expect(tokenRequests[0], "Remote-device OAuth exchange must send a PKCE verifier, not a static client secret-only flow.").toContain("code_verifier=");
+      expect(
+        credential,
+        "Successful remote-device OAuth must persist an agent-scoped MCP credential for later runtime discovery.",
+      ).toMatchObject({
+        kind: "oauth",
+        access: "linear-access-token",
+        refresh: "linear-refresh-token",
+        scope: "issues:read",
+        token_type: "Bearer",
+      });
+    } finally {
+      delete process.env.US_TEST_MCP_CALLBACK;
+      tokenServer.stop(true);
+    }
+  });
+
+  test("usDevPrompt_WhenBuiltinToolRuns_PersistsGoldenJsonlTranscriptShape", async () => {
+    const repoRoot = join(import.meta.dir, "../../../..");
+    const cli = join(repoRoot, "packages/us-cli/src/index.ts");
+    const promptHome = await mkdtemp(join(tmpdir(), "union-street-cli-prompt-test-"));
+    const promptWorkdir = await mkdtemp(join(tmpdir(), "union-street-cli-prompt-work-"));
+    const promptEnv = {
+      ...process.env,
+      US_HOME: promptHome,
+      HOME: promptWorkdir,
+      US_MEMORY_SYNC: "0",
+      US_STREAM_MODEL_STUB: "1",
+      US_USAGE_DISABLE_MODELS_DEV_COSTS: "1",
+    };
+
+    try {
+      const initProc = Bun.spawn(["bun", "run", cli, "init", "coo", "--role", "coo", "--capability", "executive"], {
+        cwd: promptWorkdir,
+        env: promptEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [initStdout, initStderr, initCode] = await Promise.all([
+        new Response(initProc.stdout).text(),
+        new Response(initProc.stderr).text(),
+        initProc.exited,
+      ]);
+
+      const proc = Bun.spawn(["bun", "run", cli, "coo", "-p", "please use ls tool"], {
+        cwd: promptWorkdir,
+        env: promptEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      const sessionFile = await findSessionFileContaining(promptHome, "coo", "please use ls tool");
+      const raw = await readFile(sessionFile, "utf8");
+      const rows = raw.trim().split("\n").map((line) => JSON.parse(line));
+
+      expect(initCode, `us-dev init coo should exit successfully; stdout=${initStdout} stderr=${initStderr}`).toBe(0);
+      expect(code, `us-dev coo -p should exit successfully; stdout=${stdout} stderr=${stderr}`).toBe(0);
+      expect(stdout, "The non-interactive prompt should print the final assistant response to stdout.").toContain("stub response");
+      expect(stderr, "Tool execution should be visible on stderr without corrupting stdout transcript text.").toContain("[tool:ls]");
+      expect(sessionFile, "The CLI -p path must create a durable session file containing the prompt.").toContain("/profiles/coo/sessions/");
+      expect(
+        rows.map((row) => row.kind ?? row.role),
+        "Golden CLI -p JSONL shape must preserve meta, user, assistant tool-call turn, tool result, and final assistant turn order.",
+      ).toEqual(["session_meta", "user", "assistant", "tool", "assistant"]);
+      expect(rows[0], "Session metadata must persist provider/model so /resume remembers the selected model.").toMatchObject({
+        kind: "session_meta",
+        provider: "codex",
+        model: "gpt-5.4",
+      });
+      expect(rows[2].tool_calls[0].name, "The assistant tool-call row must persist the executed function name.").toBe("ls");
+      expect(rows[3].name, "The tool result row must carry the tool name for rendered tool-call history.").toBe("ls");
+      expect(rows[4].usage.total, "The final assistant row must persist token usage for /cost and accounting.").toBe(2);
+    } finally {
+      await rm(promptHome, { recursive: true, force: true });
+      await rm(promptWorkdir, { recursive: true, force: true });
+    }
+  });
 });
+
+async function findSessionFileContaining(home: string, profile: string, needle: string): Promise<string> {
+  const dir = join(home, "profiles", profile, "sessions");
+  const files = await readdir(dir);
+  for (const file of files.filter((name) => name.endsWith(".jsonl"))) {
+    const full = join(dir, file);
+    const raw = await readFile(full, "utf8");
+    if (raw.includes(needle)) return full;
+  }
+  throw new Error(`No ${profile} session contained "${needle}". Files: ${files.join(", ")}`);
+}

@@ -31,6 +31,7 @@ interface McpCommandOptions {
   redirectUri?: string;
   scope?: string;
   audience?: string;
+  callbackEnv?: string;
 }
 
 export async function mcpCommand(
@@ -159,7 +160,7 @@ async function mcpOAuth(profile: string, server: string, options: McpCommandOpti
   console.log(started.url);
   console.log("");
 
-  const callback = await askSecret("Paste callback URL or authorization code");
+  const callback = readCallbackEnv(options.callbackEnv) ?? await askSecret("Paste callback URL or authorization code");
   const token = await exchangeMcpOAuthCallback(started, callback);
   await saveMcpOAuthCredential({
     profile,
@@ -225,6 +226,17 @@ function expiryLabel(seconds: number): string {
 function readOption(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed || undefined;
+}
+
+function readCallbackEnv(name: string | undefined): string | undefined {
+  const envName = readOption(name);
+  if (!envName) return undefined;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(envName)) {
+    throw new Error("--callback-env must be an environment variable name, not the callback value.");
+  }
+  const value = readOption(process.env[envName]);
+  if (!value) throw new Error(`Environment variable ${envName} is empty or not set.`);
+  return value;
 }
 
 async function resolveOAuthMetadata(

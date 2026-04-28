@@ -3,15 +3,18 @@ import { createHmac } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { startDummyMcpServer, type DummyMcpServerHandle } from "../../us-core/src/dummy-mcp-server.ts";
 
 const usHome = await mkdtemp(join(tmpdir(), "union-street-runtime-test-"));
 const workdir = await mkdtemp(join(tmpdir(), "union-street-runtime-work-"));
+const previousAllowPrivateMcpUrls = process.env.US_MCP_ALLOW_PRIVATE_URLS;
 process.env.US_HOME = usHome;
 process.env.HOME = workdir;
 process.env.US_MEMORY_SYNC = "0";
 process.env.US_PEER_CALL_STUB = "1";
 process.env.US_STREAM_MODEL_STUB = "1";
 process.env.US_USAGE_DISABLE_MODELS_DEV_COSTS = "1";
+process.env.US_MCP_ALLOW_PRIVATE_URLS = "1";
 
 const core = await import("@unionstreet/us-core");
 const runtime = await import("./index.ts");
@@ -19,8 +22,29 @@ const demo = core.buildDemoFederationConfig();
 const demoProfiles = demo.org.map((node) => node.id);
 
 let fetchHandler!: ReturnType<typeof runtime.createRuntimeFetchHandler>;
+let poetry!: DummyMcpServerHandle;
+let context!: DummyMcpServerHandle;
 
 beforeAll(async () => {
+  poetry = await startDummyMcpServer({
+    name: "poetry",
+    token: "poetry-token",
+    toolName: "poems.read",
+    poem: "Twenty agents wake in line / Truth moves upward, work refines.",
+  });
+  context = await startDummyMcpServer({
+    name: "context",
+    token: "context-token",
+    toolName: "context.poem",
+    poem: "A head node hums with steady flame / Every report preserves its name.",
+  });
+  demo.config.grants.push({
+    id: "runtime-dummy-mcp",
+    resource: "mcp",
+    servers: ["poetry", "context"],
+    tools: ["poems.*", "context.*"],
+    roles: ["executive"],
+  });
   await writeFile(core.FEDERATION_PATH, JSON.stringify(demo.config, null, 2));
   const packsById = new Map(core.buildDemoAgentPacks(demo.org).map((pack) => [pack.id, pack]));
   for (const node of demo.org) {
@@ -28,12 +52,16 @@ beforeAll(async () => {
     const pack = packsById.get(node.id);
     if (pack) await core.writeAgentPack(node.id, pack);
   }
+  await core.saveMcpApiKeyCredential({ profile: "coo", server: "poetry", apiKey: "poetry-token" });
+  await core.saveMcpApiKeyCredential({ profile: "coo", server: "context", apiKey: "context-token" });
   await writeFile(
     join(workdir, ".mcp.json"),
     JSON.stringify({
       mcp: {
         github: { type: "remote", url: "https://mcp.example.com/github", enabled: true, oauth: true },
         linear: { type: "remote", url: "https://mcp.example.com/linear", enabled: true, oauth: true },
+        poetry: { type: "remote", url: poetry.url, enabled: true, headers: { Authorization: "Bearer" } },
+        context: { type: "remote", url: context.url, enabled: true, headers: { Authorization: "Bearer" } },
       },
     }),
   );
@@ -41,6 +69,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (previousAllowPrivateMcpUrls === undefined) delete process.env.US_MCP_ALLOW_PRIVATE_URLS;
+  else process.env.US_MCP_ALLOW_PRIVATE_URLS = previousAllowPrivateMcpUrls;
+  poetry?.stop();
+  context?.stop();
   await rm(usHome, { recursive: true, force: true });
   await rm(workdir, { recursive: true, force: true });
 });
@@ -637,6 +669,66 @@ test("startRuntimeServer_WhenAuthTokenIsConfigured_ProtectsRealHttpApiRoutes", a
   }
 });
 
+test("startRuntimeServer_WhenRestartedAfterSchedulerRun_PreservesSessionsRunsAndDoesNotDuplicateClaimedWork", async () => {
+  const now = Date.UTC(2026, 5, 1, 9, 45);
+  const first = runtime.startRuntimeServer({ port: 0, hostname: "127.0.0.1", cwd: workdir, authToken: "restart-secret" });
+  try {
+    const tick = await fetch(`${first.url}/api/scheduler/tick`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer restart-secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ now, profiles: ["dir-eng-product"], execute: true }),
+    });
+    const body = await tick.json() as any;
+
+    expectStatus(tick, 200, "pre-restart scheduler execution should succeed over a real HTTP listener");
+    expect(body.runs.every((run: any) => run.status === "complete"), "The pre-restart scheduler run should complete before restart.").toBe(true);
+  } finally {
+    first.stop();
+  }
+
+  const second = runtime.startRuntimeServer({ port: 0, hostname: "127.0.0.1", cwd: workdir, authToken: "restart-secret" });
+  try {
+    const sessions = await fetch(`${second.url}/api/sessions?profile=dir-eng-product`, {
+      headers: { authorization: "Bearer restart-secret" },
+    });
+    const runs = await fetch(`${second.url}/api/scheduler/runs`, {
+      headers: { authorization: "Bearer restart-secret" },
+    });
+    const duplicateTick = await fetch(`${second.url}/api/scheduler/tick`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer restart-secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ now, profiles: ["dir-eng-product"], execute: true }),
+    });
+    const sessionBody = await sessions.json() as any;
+    const runsBody = await runs.json() as any;
+    const duplicateBody = await duplicateTick.json() as any;
+
+    expectStatus(sessions, 200, "restarted runtime should keep reading existing session files from US_HOME");
+    expectStatus(runs, 200, "restarted runtime should keep reading existing scheduler runs from US_HOME");
+    expectStatus(duplicateTick, 200, "restarted runtime should accept scheduler ticks after restart");
+    expect(
+      sessionBody.sessions.length,
+      "Scheduler-created sessions must survive runtime process restart.",
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      runsBody.runs.some((run: any) => run.profile === "dir-eng-product" && run.status === "complete" && run.dueAt === now - 15 * 60 * 1000),
+      "Completed scheduler runs must remain readable after restart.",
+    ).toBe(true);
+    expect(
+      duplicateBody.runs,
+      "A restart must not allow the same profile/due window to be claimed twice.",
+    ).toEqual([]);
+  } finally {
+    second.stop();
+  }
+});
+
 for (const profile of demoProfiles) {
   test(`GETAgentDetail_WhenProfileIs${titleCaseId(profile)}_ReturnsAtomicPackAndPrincipal`, async () => {
     const route = `/api/agents/${profile}`;
@@ -745,6 +837,92 @@ for (const node of demo.org) {
     }
   });
 }
+
+test("POSTSchedulerTick_WhenExecutingTheFullDemoOrg_TouchesEveryAgentAndPersistsAuditUsageAndSessions", async () => {
+  const now = Date.UTC(2026, 6, 6, 9, 45);
+
+  const { response, body } = await postJson("/api/scheduler/tick", { now, execute: true });
+  const runs = body.runs as any[];
+  const completed = runs.filter((run) => run.status === "complete");
+  const profilesTouched = new Set(completed.map((run) => run.profile));
+  const usage = await fetchJson("/api/usage?kind=prompt&limit=1000");
+  const schedulerEvents = await fetchJson("/api/events?type=scheduler.run.complete&limit=1000");
+  const sessions = await Promise.all([...profilesTouched].map(async (profile) => ({
+    profile,
+    body: (await fetchJson(`/api/sessions?profile=${profile}`)).body,
+  })));
+
+  expectStatus(response, 200, "full-org scheduler execution should complete through the runtime API");
+  expect(runs, "The demo org should compile to exactly pulse plus weekly schedule for each of 20 agents.").toHaveLength(40);
+  expect(completed, "Every claimed full-org scheduler run should execute to completion in the stubbed deterministic runtime.").toHaveLength(40);
+  expect(
+    profilesTouched.size,
+    "The ultimate runtime test must touch every agent in the 20-agent enterprise graph, not just the root path.",
+  ).toBe(20);
+  expect(
+    completed.every((run) => run.trace?.startsWith("scheduler:") && run.sessionId?.startsWith(`scheduler-${run.profile}-`)),
+    "Every completed scheduler run must carry trace and session ids that stitch together audit, transcript, and usage records.",
+  ).toBe(true);
+  expect(
+    completed.every((run) => run.result?.usage?.total === 2 && run.result?.text?.includes("stub response from codex")),
+    "Every completed scheduler run must include model text and token usage from the real prompt runner path.",
+  ).toBe(true);
+  expect(
+    usage.body.summary.calls,
+    "Usage accounting must include the existing runtime prompt/scheduler calls plus one prompt ledger row for each full-org scheduler execution.",
+  ).toBeGreaterThanOrEqual(43);
+  expect(
+    usage.body.summary.total,
+    "Usage accounting must aggregate token totals across the full 20-agent scheduler run and earlier runtime prompt tests.",
+  ).toBeGreaterThanOrEqual(86);
+  expect(
+    schedulerEvents.body.events.length,
+    "Scheduler completion events must include every completed full-org run.",
+  ).toBeGreaterThanOrEqual(40);
+  expect(
+    sessions.every(({ body: sessionBody }) => sessionBody.sessions.length >= 2),
+    "Every touched agent must have durable session files for its pulse and scheduled sync.",
+  ).toBe(true);
+});
+
+test("POSTAgentPrompt_WhenHeadNodeUsesRemoteMcpTool_ThreadsToolCallUsageSessionAndAuditTogether", async () => {
+  const prompt = "please use the poetry mcp tool to add a poem to context";
+
+  const { response, body } = await postJson("/api/agents/coo/prompt", {
+    prompt,
+    sessionId: "ultimate-mcp-session",
+    trace: "ultimate-mcp-trace",
+  });
+  const result = body.result;
+  const events = await fetchJson(`/api/events?trace=${result.trace}&limit=100`);
+  const listEvents = await fetchJson("/api/events?type=mcp.tool.list&actor=coo&limit=100");
+  const usage = await fetchJson(`/api/usage?trace=${result.trace}&limit=20`);
+  const session = await Bun.file(result.sessionFile).text();
+
+  expectStatus(response, 202, "head-node prompt route should run the same agent loop used by us-dev -p");
+  expect(result.trace, "Explicit traces must survive the runtime prompt boundary for Lash/audit correlation.").toBe("ultimate-mcp-trace");
+  expect(result.sessionId, "Explicit session ids must survive the runtime prompt boundary for /resume and dashboard chat.").toBe("ultimate-mcp-session");
+  expect(
+    result.toolCalls.map((call: any) => call.name),
+    "The model-safe remote MCP tool name should be returned in the prompt result.",
+  ).toEqual(["mcp_context_context_poem"]);
+  expect(
+    session,
+    "The runtime transcript must persist the remote MCP tool output before the follow-up assistant turn.",
+  ).toContain("A head node hums with steady flame");
+  expect(
+    events.body.events.map((event: any) => event.type),
+    "Remote MCP prompt runs must leave a complete audit trail on one trace.",
+  ).toEqual(expect.arrayContaining(["prompt.run.start", "prompt.tool.call", "mcp.tool.call", "model.usage", "prompt.run.complete"]));
+  expect(
+    listEvents.body.events.some((event: any) => event.resource === "mcp:context" && event.outcome === "success"),
+    "Remote MCP discovery should be audited before tool exposure, even though discovery is not tied to a prompt trace.",
+  ).toBe(true);
+  expect(
+    usage.body.summary.total,
+    "A remote MCP prompt run should account for both the tool-call model step and the final assistant step.",
+  ).toBe(4);
+});
 
 async function fetchJson(path: string): Promise<{ response: Response; body: any }> {
   const response = await fetchHandler(new Request(`http://runtime.test${path}`));

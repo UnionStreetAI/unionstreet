@@ -172,6 +172,7 @@ export async function resolveAgentPrincipal(profile: string): Promise<FederatedA
   const pack = await readOptionalAgentPack(profile);
   const subject = pack?.oidc.subject ?? pack?.identity.subject ?? `agent:${profile}`;
   const agent = cfg.principals.agents[profile] ?? cfg.principals.agents[subject];
+  if (agent?.disabled) throw new Error(`agent "${profile}" is disabled in federation config`);
   const groups = new Set<string>([...(agent?.groups ?? []), ...(pack?.identity.groups ?? [])]);
   const roles = new Set<string>([...(agent?.roles ?? []), ...(pack?.identity.roles ?? [])]);
 
@@ -268,14 +269,16 @@ export async function resolveDelegationTargets(profile: string): Promise<Delegat
     const managerProfile = profileId(managerId);
     if (managerProfile) {
       const manager = agentPrincipalFor(agents, managerProfile);
-      const managerPack = packs.get(managerProfile);
-      targets.set(managerProfile, {
-        profile: managerProfile,
-        relation: "manager",
-        depth: 1,
-        displayName: managerPack?.identity.displayName ?? manager?.displayName,
-        title: managerPack?.identity.title ?? manager?.title,
-      });
+      if (manager) {
+        const managerPack = packs.get(managerProfile);
+        targets.set(managerProfile, {
+          profile: managerProfile,
+          relation: "manager",
+          depth: 1,
+          displayName: managerPack?.identity.displayName ?? manager?.displayName,
+          title: managerPack?.identity.title ?? manager?.title,
+        });
+      }
     }
   }
 
@@ -285,6 +288,7 @@ export async function resolveDelegationTargets(profile: string): Promise<Delegat
   ]);
   for (const reportId of directReportIds) {
     const report = agentPrincipalFor(agents, reportId);
+    if (!report && agents[reportId]?.disabled) continue;
     const reportPack = packs.get(reportId);
     targets.set(reportId, {
       profile: reportId,
@@ -1013,7 +1017,8 @@ function agentPrincipalFor(
 ): FederationPrincipal | undefined {
   const id = profileId(profile);
   if (!id) return undefined;
-  return agents[id] ?? agents[`agent:${id}`];
+  const agent = agents[id] ?? agents[`agent:${id}`];
+  return agent?.disabled ? undefined : agent;
 }
 
 function descendantsOf(
@@ -1028,6 +1033,7 @@ function descendantsOf(
     if (seen.has(current.id)) continue;
     seen.add(current.id);
     for (const agent of Object.values(agents)) {
+      if (agent.disabled) continue;
       if (profileId(agent.manager) !== current.id) continue;
       out.push({ agent, depth: current.depth + 1 });
       queue.push({ id: agent.id, depth: current.depth + 1 });

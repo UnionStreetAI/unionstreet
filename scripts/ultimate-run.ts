@@ -20,12 +20,14 @@ const repoRoot = process.cwd();
 const cli = join(repoRoot, "packages/us-cli/src/index.ts");
 const usHome = await mkdtemp(join(tmpdir(), "union-street-ultimate-"));
 const workdir = await mkdtemp(join(tmpdir(), "union-street-ultimate-work-"));
+const previousAllowPrivateMcpUrls = process.env.US_MCP_ALLOW_PRIVATE_URLS;
 let poetryMcp: DummyMcpServerHandle | undefined;
 let contextMcp: DummyMcpServerHandle | undefined;
 
 try {
   process.env.US_HOME = usHome;
   process.env.US_MEMORY_SYNC = "0";
+  process.env.US_MCP_ALLOW_PRIVATE_URLS = "1";
   if (!live) process.env.US_STREAM_MODEL_STUB = "1";
   if (live && !apiKey) throw new Error("Live ultimate run requires US_ULTIMATE_API_KEY.");
 
@@ -165,6 +167,8 @@ try {
   const usage = core.summarizeUsage(usageRecords);
   const lashCalls = events.filter((event) => event.type === "lash.call");
   const lashAllows = events.filter((event) => event.type === "lash.allow");
+  const lashCallKeys = new Set(lashCalls.map(edgeKey));
+  const lashAllowKeys = new Set(lashAllows.map(edgeKey));
   const promptStarts = allEvents.filter((event) => event.type === "prompt.run.start");
   assert(promptStarts.some((event) => event.actor === "coo"), "head-node -p should emit prompt.run.start for @coo");
   assert(allEvents.some((event) => event.type === "prompt.model.start" && event.actor === "coo" && JSON.stringify(event.payload).includes(provider) && JSON.stringify(event.payload).includes(model)), `head-node -p should start ${provider}/${model}`);
@@ -173,6 +177,15 @@ try {
   assert(allEvents.some((event) => event.type === "prompt.tool.call" && event.actor === "coo" && String(event.resource).includes("tool:mcp_")), "head-node -p should route dummy MCP calls through the normal model tool path");
   assert(lashCalls.length >= delegatedEdges.length + reportedEdges.length, `expected at least ${delegatedEdges.length + reportedEdges.length} Lash calls, got ${lashCalls.length}`);
   assert(lashAllows.length >= delegatedEdges.length + reportedEdges.length, `expected at least ${delegatedEdges.length + reportedEdges.length} Lash allow events, got ${lashAllows.length}`);
+  for (const edge of delegatedEdges) {
+    assert(lashCallKeys.has(`delegate:${edge}`), `delegation edge ${edge} should have a matching lash.call event`);
+    assert(lashAllowKeys.has(`delegate:${edge}`), `delegation edge ${edge} should have a matching lash.allow event`);
+  }
+  for (const edge of reportedEdges) {
+    assert(lashCallKeys.has(`report:${edge}`), `report edge ${edge} should have a matching lash.call event`);
+    assert(lashAllowKeys.has(`report:${edge}`), `report edge ${edge} should have a matching lash.allow event`);
+  }
+  assert(events.every((event) => !["lash.call", "lash.allow"].includes(event.type) || event.threadId), "every Lash call/allow event should preserve a thread id");
 
   for (const agent of allAgents) {
     const sessionsDir = join(usHome, "profiles", agent, "sessions");
@@ -193,6 +206,8 @@ try {
   console.log(`  cost                $${(usage.costMicroUsd / 1_000_000).toFixed(6)}`);
   if (keep) console.log(`  US_HOME             ${usHome}`);
 } finally {
+  if (previousAllowPrivateMcpUrls === undefined) delete process.env.US_MCP_ALLOW_PRIVATE_URLS;
+  else process.env.US_MCP_ALLOW_PRIVATE_URLS = previousAllowPrivateMcpUrls;
   poetryMcp?.stop();
   contextMcp?.stop();
   if (!keep) {
@@ -226,6 +241,7 @@ async function cliPrompt(prompt: string): Promise<string> {
     ...process.env,
     US_HOME: usHome,
     US_MEMORY_SYNC: "0",
+    US_MCP_ALLOW_PRIVATE_URLS: "1",
     ...(live ? {} : { US_STREAM_MODEL_STUB: "1" }),
   };
   const proc = Bun.spawn(["bun", "run", cli, "coo", "-p", prompt], {
@@ -299,6 +315,13 @@ async function directoryHasJsonl(path: string): Promise<boolean> {
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function edgeKey(event: { actor?: string; target?: string; payload?: unknown }): string {
+  const method = typeof event.payload === "object" && event.payload && "method" in event.payload
+    ? String((event.payload as { method?: unknown }).method)
+    : "unknown";
+  return `${method}:${event.actor}->${event.target}`;
 }
 
 function redact(value: string): string {

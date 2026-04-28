@@ -44,6 +44,8 @@ us runtime status coder
 us runtime ensure coder
 ```
 
+Runtime/API hardening, MCP URL policy, webhook signatures, secrets, scheduler, and accounting contracts are documented in [`docs/control-plane-runtime.md`](docs/control-plane-runtime.md).
+
 ## Status
 
 Pre-alpha. See `unionstreet-agent/` (sibling repo for design notes).

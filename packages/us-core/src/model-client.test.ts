@@ -211,6 +211,112 @@ describe("model client", () => {
       },
     ]);
   });
+
+  test("streamModel_WhenProviderHasNoCredential_EmitsConfiguredButUnwiredError", async () => {
+    const events = await collect(streamModel({
+      profile: "coo",
+      provider: "custom-openai-compat:missing",
+      model: "missing-model",
+      messages: [{ role: "user", content: "hi" }],
+    }));
+
+    expect(
+      events,
+      "Unknown providers must fail explicitly instead of falling back to Codex or silently using another credential.",
+    ).toEqual([{
+      type: "error",
+      error: 'provider "custom-openai-compat:missing" is configured, but no stream client is wired for it yet',
+    }]);
+  });
+
+  test("streamModel_WhenOpenAICompatProviderReturnsRateLimit_EmitsTruncatedHttpError", async () => {
+    await updateAuthProfiles(GLOBAL_AUTH_PROFILES_PATH, (current) => ({
+      ...current,
+      providers: {
+        ...current.providers,
+        "custom-openai-compat:rate-limit": {
+          kind: "api_key",
+          api_key: "rate-limit-key",
+          base_url: "https://rate-limit.example.com/v1",
+        },
+      },
+    }));
+    globalThis.fetch = (async () => new Response("x".repeat(900), { status: 429 })) as unknown as typeof fetch;
+
+    const events = await collect(streamModel({
+      profile: "coo",
+      provider: "custom-openai-compat:rate-limit",
+      model: "rate-limited-model",
+      messages: [{ role: "user", content: "hi" }],
+    }));
+
+    expect(events[0]?.type, "Provider 429s must surface as model error events, not thrown process errors.").toBe("error");
+    expect(
+      (events[0] as { error?: string }).error,
+      "HTTP provider errors should be truncated so logs do not balloon or echo entire upstream bodies.",
+    ).toBe(`http 429: ${"x".repeat(500)}...`);
+  });
+
+  test("streamModel_WhenOpenAICompatFetchThrows_EmitsNetworkError", async () => {
+    await updateAuthProfiles(GLOBAL_AUTH_PROFILES_PATH, (current) => ({
+      ...current,
+      providers: {
+        ...current.providers,
+        "custom-openai-compat:network": {
+          kind: "api_key",
+          api_key: "network-key",
+          base_url: "https://network.example.com/v1",
+        },
+      },
+    }));
+    globalThis.fetch = (async () => {
+      throw new Error("socket closed");
+    }) as unknown as typeof fetch;
+
+    const events = await collect(streamModel({
+      profile: "coo",
+      provider: "custom-openai-compat:network",
+      model: "network-model",
+      messages: [{ role: "user", content: "hi" }],
+    }));
+
+    expect(
+      events,
+      "Network failures must be self-validating model error events so fallback logic can decide whether to retry another model.",
+    ).toEqual([{ type: "error", error: "network: socket closed" }]);
+  });
+
+  test("streamModel_WhenAnthropicOAuthCredentialIsExpired_RejectsBeforeFetch", async () => {
+    await updateAuthProfiles(GLOBAL_AUTH_PROFILES_PATH, (current) => ({
+      ...current,
+      providers: {
+        ...current.providers,
+        anthropic: {
+          kind: "oauth",
+          provider: "anthropic",
+          access: "expired-access",
+          refresh: "expired-refresh",
+          expires: Date.now() - 1_000,
+        },
+      },
+    }));
+    let fetchCalled = false;
+    globalThis.fetch = (async () => {
+      fetchCalled = true;
+      return new Response("", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      collect(streamModel({
+        profile: "coo",
+        provider: "anthropic",
+        model: "claude-expired",
+        messages: [{ role: "user", content: "hi" }],
+      })),
+      "Expired OAuth credentials should fail before making a provider request.",
+    ).rejects.toThrow("token is expired");
+    expect(fetchCalled, "Expired OAuth credentials must not be sent over the network.").toBe(false);
+  });
 });
 
 async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {

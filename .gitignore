@@ -6,3 +6,5 @@ dist
 .env.local
 bun.lock
 packages/*/tsconfig.tsbuildinfo
+.claude/
+.factory/
