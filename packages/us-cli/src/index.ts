@@ -10,7 +10,7 @@ import { profileList, profileUse } from "./commands/profile.ts";
 import { chat } from "./commands/chat.tsx";
 import { prompt } from "./commands/prompt.ts";
 import { federationDemoOrg, federationJwks, federationStatus, federationToken, federationVerify } from "./commands/federation.ts";
-import { runtimeEnsure, runtimeServe, runtimeStatus } from "./commands/runtime.ts";
+import { runtimeEnsure, runtimeRender, runtimeServe, runtimeStatus } from "./commands/runtime.ts";
 import { agentMcpCommand, mcpCommand } from "./commands/mcp.ts";
 import { eventsCommand } from "./commands/events.ts";
 import { schedulerCommand } from "./commands/scheduler.ts";
@@ -257,9 +257,15 @@ cli
   });
 
 cli
-  .command("runtime <action> [profile]", "Runtime/workspace: status [profile] | ensure <profile> | serve")
+  .command("runtime <action> [profile]", "Runtime/workspace: status [profile] | ensure <profile> | render <profile> | serve")
   .option("--port <port>", "Port for `runtime serve`, defaults to 8787")
   .option("--host <host>", "Host for `runtime serve`, defaults to 127.0.0.1")
+  .option("--provider <provider>", "Provider override for supported runtime actions, e.g. kubernetes")
+  .option("--dry-run", "Print rendered provider resources without creating them")
+  .option("--namespace <namespace>", "Kubernetes namespace for dry-run manifests")
+  .option("--image <image>", "Container image for Kubernetes dry-run manifests")
+  .option("--workload <kind>", "Kubernetes agent workload kind: Deployment | Job | Pod")
+  .option("--external-secret <name>", "Existing Kubernetes Secret to project into rendered agent pods")
   .action(async (action: string, profile: string | undefined, options) => {
     try {
       switch (action) {
@@ -271,13 +277,33 @@ cli
             console.error("`us-dev runtime ensure` requires a profile.");
             process.exit(2);
           }
-          await runtimeEnsure(profile);
+          await runtimeEnsure(profile, {
+            provider: options.provider ? String(options.provider) : undefined,
+            dryRun: Boolean(options.dryRun),
+            namespace: options.namespace ? String(options.namespace) : undefined,
+            image: options.image ? String(options.image) : undefined,
+            workload: options.workload ? String(options.workload) : undefined,
+            externalSecret: options.externalSecret ? String(options.externalSecret) : undefined,
+          });
+          break;
+        case "render":
+          if (!profile) {
+            console.error("`us-dev runtime render` requires a profile.");
+            process.exit(2);
+          }
+          await runtimeRender(profile, {
+            provider: options.provider ? String(options.provider) : undefined,
+            namespace: options.namespace ? String(options.namespace) : undefined,
+            image: options.image ? String(options.image) : undefined,
+            workload: options.workload ? String(options.workload) : undefined,
+            externalSecret: options.externalSecret ? String(options.externalSecret) : undefined,
+          });
           break;
         case "serve":
           await runtimeServe(options);
           break;
         default:
-          console.error(`Unknown runtime action "${action}". Try: status [profile] | ensure <profile> | serve`);
+          console.error(`Unknown runtime action "${action}". Try: status [profile] | ensure <profile> | render <profile> | serve`);
           process.exit(2);
       }
     } catch (e) {

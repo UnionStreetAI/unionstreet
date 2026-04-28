@@ -336,6 +336,19 @@ export type {
 } from "./cloud-runtime.ts";
 
 export {
+  dumpKubernetesManifests,
+  renderAgentKubernetesManifests,
+  validateKubernetesManifests,
+} from "./kubernetes-runtime.ts";
+export type {
+  KubernetesAgentWorkloadKind,
+  KubernetesManifest,
+  KubernetesManifestValidation,
+  KubernetesRenderedManifest,
+  KubernetesRenderOptions,
+} from "./kubernetes-runtime.ts";
+
+export {
   dumpSecretRegistry,
   materializeAgentSecrets,
   readSecretRegistry,

@@ -1,9 +1,13 @@
 import kleur from "kleur";
 import {
+  dumpKubernetesManifests,
   ensureAgentWorkspace,
   listProfiles,
+  renderAgentKubernetesManifests,
   resolveMemorySyncConfig,
   resolveAgentRuntime,
+  validateKubernetesManifests,
+  type KubernetesAgentWorkloadKind,
   type ResolvedAgentRuntime,
 } from "@unionstreet/us-core";
 import { startRuntimeServer } from "@unionstreet/us-runtime";
@@ -20,10 +24,91 @@ export async function runtimeStatus(profile?: string): Promise<void> {
   }
 }
 
-export async function runtimeEnsure(profile: string): Promise<void> {
+export interface RuntimeEnsureOptions {
+  provider?: string;
+  dryRun?: boolean;
+  namespace?: string;
+  image?: string;
+  workload?: string;
+  externalSecret?: string;
+}
+
+export async function runtimeEnsure(profile: string, options: RuntimeEnsureOptions = {}): Promise<void> {
+  if (options.provider === "kubernetes" && !options.dryRun) {
+    throw new Error("Kubernetes reconciliation is not implemented yet. Use `us-dev runtime render <profile> --provider kubernetes` or add --dry-run.");
+  }
+  if (await renderKubernetesRuntimeIfRequested(profile, options)) return;
   const runtime = await ensureAgentWorkspace(profile);
   await printRuntime(runtime);
   console.log(kleur.green("workspace ensured"));
+}
+
+export async function runtimeRender(profile: string, options: RuntimeEnsureOptions = {}): Promise<void> {
+  if (!options.provider) options.provider = "kubernetes";
+  await renderKubernetesRuntimeIfRequested(profile, { ...options, dryRun: true });
+}
+
+async function renderKubernetesRuntimeIfRequested(profile: string, options: RuntimeEnsureOptions): Promise<boolean> {
+  if (options.provider && options.provider !== "kubernetes") {
+    throw new Error(`Unsupported runtime provider override "${options.provider}". Supported render provider: kubernetes.`);
+  }
+  if (options.workload && !readWorkloadKind(options.workload)) {
+    throw new Error(`Invalid Kubernetes workload "${options.workload}". Expected Deployment, Job, or Pod.`);
+  }
+  if (options.dryRun && options.provider !== "kubernetes") {
+    throw new Error("runtime ensure --dry-run currently requires --provider kubernetes.");
+  }
+  if (options.provider === "kubernetes" && options.dryRun) {
+    const runtime = coerceKubernetesDryRunRuntime(await resolveAgentRuntime(profile));
+    const manifests = renderAgentKubernetesManifests(runtime, {
+      ...(options.namespace ? { namespace: options.namespace } : {}),
+      ...(options.image ? { image: options.image } : {}),
+      ...(readWorkloadKind(options.workload) ? { workloadKind: readWorkloadKind(options.workload) } : {}),
+      ...(options.externalSecret ? { externalSecretName: options.externalSecret } : {}),
+    });
+    const validation = validateKubernetesManifests(manifests);
+    if (!validation.ok) {
+      throw new Error(`Rendered Kubernetes manifests failed validation:\n${validation.errors.map((error) => `- ${error}`).join("\n")}`);
+    }
+    process.stdout.write(dumpKubernetesManifests(manifests));
+    return true;
+  }
+  return false;
+}
+
+function coerceKubernetesDryRunRuntime(runtime: ResolvedAgentRuntime): ResolvedAgentRuntime {
+  if (runtime.workspace.provider === "kubernetes") return runtime;
+  return {
+    ...runtime,
+    pluginId: "runtime-kubernetes",
+    terraformModule: "plugins/runtime-kubernetes/terraform",
+    compute: {
+      ...runtime.compute,
+      provider: "kubernetes",
+      target: "pod",
+    },
+    storage: {
+      ...runtime.storage,
+      provider: "volume",
+      mountPath: "/workspace",
+      persistent: true,
+    },
+    ingress: {
+      ...runtime.ingress,
+      provider: "kubernetes-ingress",
+      internalUrl: undefined,
+      url: isLoopbackUrl(runtime.ingress.url) ? undefined : runtime.ingress.url,
+      public: runtime.ingress.public,
+    },
+    workspace: {
+      ...runtime.workspace,
+      provider: "kubernetes",
+      workdir: "/workspace",
+      region: runtime.workspace.region ?? "local",
+      persistent: true,
+    },
+    workspacePath: "/workspace",
+  };
 }
 
 export async function runtimeServe(options: { port?: string | number; host?: string } = {}): Promise<void> {
@@ -69,4 +154,22 @@ async function printRuntime(runtime: ResolvedAgentRuntime): Promise<void> {
   if (runtime.terraformModule) console.log(`  terraform  ${kleur.dim(runtime.terraformModule)}`);
   for (const warning of runtime.warnings) console.log(`  ${kleur.yellow("warn")}      ${warning}`);
   console.log("");
+}
+
+function readWorkloadKind(value: string | undefined): KubernetesAgentWorkloadKind | undefined {
+  if (value === "Deployment" || value === "Job" || value === "Pod") return value;
+  if (value === "deployment") return "Deployment";
+  if (value === "job") return "Job";
+  if (value === "pod") return "Pod";
+  return undefined;
+}
+
+function isLoopbackUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const host = new URL(value).hostname;
+    return host === "127.0.0.1" || host === "localhost" || host === "::1";
+  } catch {
+    return false;
+  }
 }
