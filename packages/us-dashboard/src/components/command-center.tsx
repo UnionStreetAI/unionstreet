@@ -1,8 +1,8 @@
 import { Background, Controls, MiniMap, Position, ReactFlow, type Edge, type Node, useEdgesState, useNodesState } from "@xyflow/react";
-import { BrainCircuit, FileCode2, MessageSquare, Network, Radio, ScrollText, Settings2, Zap } from "lucide-react";
+import { BrainCircuit, FileCode2, MessageSquare, Network, Radio, ScrollText, Settings2, Sparkles, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Agent } from "../App";
-import type { RuntimeEvent } from "../runtime-client";
+import { applyFleet, planFleet, runtimeToken, type RuntimeEvent, type RuntimeFleetPlan, type RuntimeFleetValidation } from "../runtime-client";
 import { AgentEditor } from "./agent-editor";
 import type { DashboardModelGroup } from "./model-selector";
 import { Badge } from "./ui/badge";
@@ -31,6 +31,7 @@ interface CommandCenterProps {
   onOpenChat(agentId: string): void;
   onOpenAgents(): void;
   onOpenAudit(): void;
+  onFleetApplied(): Promise<void>;
 }
 
 export function CommandCenter({
@@ -45,10 +46,12 @@ export function CommandCenter({
   onOpenChat,
   onOpenAgents,
   onOpenAudit,
+  onFleetApplied,
 }: CommandCenterProps) {
   const [view, setView] = useState<CommandView>("graph");
   const [selectedAgentId, setSelectedAgentId] = useState(agents[0]?.id ?? "");
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+  const [fleetDesignerOpen, setFleetDesignerOpen] = useState(false);
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   const directReports = selectedAgent ? agents.filter((agent) => agent.manager === selectedAgent.id) : [];
   const activeEdges = useMemo(() => activeEdgeIds(rawEvents, agents), [rawEvents, agents]);
@@ -94,6 +97,7 @@ export function CommandCenter({
         </div>
         <div className="actions">
           <Button variant="secondary" onClick={onOpenAudit}><ScrollText size={15} />Audit trail</Button>
+          <Button variant="secondary" onClick={() => setFleetDesignerOpen(true)}><Sparkles size={15} />Design fleet</Button>
           <Button variant="laser" onClick={() => selectedAgent && onOpenChat(selectedAgent.id)}><MessageSquare size={15} />Steer selected</Button>
         </div>
       </div>
@@ -236,7 +240,124 @@ export function CommandCenter({
           onClose={() => setEditingAgent(null)}
         />
       )}
+
+      {fleetDesignerOpen && selectedAgent && (
+        <FleetDesignerModal
+          agent={selectedAgent}
+          onApplied={onFleetApplied}
+          onClose={() => setFleetDesignerOpen(false)}
+        />
+      )}
     </>
+  );
+}
+
+function FleetDesignerModal({ agent, onApplied, onClose }: { agent: Agent; onApplied(): Promise<void>; onClose(): void }) {
+  const [prompt, setPrompt] = useState("Build the company you want to run for Union Street. Keep it lean, practical, and policy-aware.");
+  const [plan, setPlan] = useState<RuntimeFleetPlan | undefined>(undefined);
+  const [validation, setValidation] = useState<RuntimeFleetValidation | undefined>(undefined);
+  const [status, setStatus] = useState<"idle" | "planning" | "applying" | "applied">("idle");
+  const [error, setError] = useState<string | undefined>(undefined);
+  const hasWriteToken = Boolean(runtimeToken());
+
+  async function requestPlan() {
+    setStatus("planning");
+    setError(undefined);
+    setPlan(undefined);
+    setValidation(undefined);
+    try {
+      const response = await planFleet({ profile: agent.id, prompt });
+      setPlan(response.plan);
+      setValidation(response.validation);
+      setStatus("idle");
+    } catch (caught) {
+      setError((caught as Error).message);
+      setStatus("idle");
+    }
+  }
+
+  async function materializePlan() {
+    if (!plan) return;
+    setStatus("applying");
+    setError(undefined);
+    try {
+      const result = await applyFleet(plan);
+      setValidation(result.validation);
+      setStatus(result.applied ? "applied" : "idle");
+      if (result.applied) await onApplied();
+      if (!result.validation.ok) setError(result.validation.errors.join("; "));
+    } catch (caught) {
+      setError((caught as Error).message);
+      setStatus("idle");
+    }
+  }
+
+  return (
+    <div className="agent-editor-backdrop" role="presentation">
+      <section className="fleet-designer-modal" role="dialog" aria-modal="true" aria-label="Design fleet">
+        <header className="fleet-designer-head">
+          <div>
+            <p className="eyebrow">Head-agent fleet design</p>
+            <h2>Ask @{agent.id} to draft its company</h2>
+            <p>Generated fleets are proposals. Validation must pass before the control plane can materialize profiles, packs, and federation policy.</p>
+          </div>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </header>
+
+        <div className="fleet-designer-grid">
+          <div className="fleet-designer-compose">
+            <label className="field">
+              <span>Prompt</span>
+              <textarea
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                rows={8}
+              />
+            </label>
+            <div className="command-agent-actions">
+              <Button variant="laser" onClick={requestPlan} disabled={!hasWriteToken || status === "planning" || !prompt.trim()}>
+                <Sparkles size={15} />{status === "planning" ? "Designing" : "Generate plan"}
+              </Button>
+              <Button variant="secondary" onClick={materializePlan} disabled={!hasWriteToken || !plan || validation?.ok !== true || status === "applying"}>
+                <BrainCircuit size={15} />{status === "applying" ? "Materializing" : "Materialize fleet"}
+              </Button>
+            </div>
+            {!hasWriteToken && <div className="fleet-designer-error">Fleet planning and materialization are locked until the dashboard has a runtime bearer token.</div>}
+            {status === "applied" && <div className="fleet-designer-success">Fleet materialized. Runtime snapshot refreshed.</div>}
+            {error && <div className="fleet-designer-error">{error}</div>}
+          </div>
+
+          <div className="fleet-designer-preview">
+            <h3>Validation</h3>
+            {validation ? (
+              <div className={validation.ok ? "fleet-validation ok" : "fleet-validation fail"}>
+                <b>{validation.ok ? "valid" : "blocked"}</b>
+                <span>{validation.summary.agents} agents · root @{validation.summary.root || "none"}</span>
+                {validation.errors.map((item) => <p key={`error-${item}`}>{item}</p>)}
+                {validation.warnings.map((item) => <p key={`warning-${item}`}>{item}</p>)}
+              </div>
+            ) : (
+              <div className="empty-state">No generated plan yet.</div>
+            )}
+
+            {plan && (
+              <>
+                <h3>Proposed agents</h3>
+                <div className="fleet-plan-list">
+                  {plan.agents.map((candidate) => (
+                    <div key={candidate.id}>
+                      <b>@{candidate.id}</b>
+                      <span>{candidate.title}</span>
+                      <em>{candidate.manager ? `reports to @${candidate.manager}` : "root"}</em>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 

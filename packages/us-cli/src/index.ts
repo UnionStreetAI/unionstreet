@@ -14,6 +14,7 @@ import { runtimeEnsure, runtimeRender, runtimeServe, runtimeStatus } from "./com
 import { agentMcpCommand, mcpCommand } from "./commands/mcp.ts";
 import { eventsCommand } from "./commands/events.ts";
 import { schedulerCommand } from "./commands/scheduler.ts";
+import { fleetCommand } from "./commands/fleet.ts";
 import { startLashPeerStdioServer } from "@unionstreet/us-core";
 import { resetTerminalModes } from "./terminalModes.ts";
 
@@ -207,6 +208,28 @@ cli
   .action(async (action: string | undefined, options) => {
     try {
       await schedulerCommand(action, options);
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+  });
+
+cli
+  .command("fleet <action> [arg]", "Fleet planning: plan <agent> -p <prompt> | validate <file> | apply <file>")
+  .option("-p, --prompt <prompt>", "Prompt for `fleet plan`")
+  .option("--out <path>", "Write generated plan YAML to a file")
+  .option("--json", "Print JSON")
+  .option("--replace", "Allow apply/validate to target profiles that already exist")
+  .option("--dry-run", "Validate and preview apply without writing profiles/federation")
+  .action(async (action: string | undefined, arg: string | undefined, options) => {
+    try {
+      await fleetCommand(action, arg, {
+        prompt: options.prompt ? String(options.prompt) : undefined,
+        out: options.out ? String(options.out) : undefined,
+        json: Boolean(options.json),
+        replace: Boolean(options.replace),
+        dryRun: Boolean(options.dryRun),
+      });
     } catch (e) {
       console.error((e as Error).message);
       process.exit(1);

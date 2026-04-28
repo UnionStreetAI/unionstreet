@@ -1019,6 +1019,113 @@ test("POSTAgentPrompt_WhenHeadNodeUsesRemoteMcpTool_ThreadsToolCallUsageSessionA
   ).toBe(4);
 });
 
+test("POSTFleetValidate_WhenPlanHasManagerCycle_ReturnsValidationErrorsWithoutWritingProfiles", async () => {
+  const plan = runtimeFleetPlan("runtime_cycle", [
+    { id: "runtime_cycle_a", manager: "runtime_cycle_b" },
+    { id: "runtime_cycle_b", manager: "runtime_cycle_a" },
+  ]);
+
+  const { response, body } = await postJson("/api/fleet/validate", { plan });
+
+  expectStatus(response, 200, "fleet validation should return structured diagnostics without requiring an apply attempt");
+  expect(
+    body.validation.ok,
+    "Runtime fleet validation must fail closed for invalid org graphs before the dashboard can offer materialization.",
+  ).toBe(false);
+  expect(
+    body.validation.errors.some((error: string) => error.includes("manager cycle detected")),
+    `Expected cycle diagnostics to reach the dashboard, got: ${body.validation.errors.join("; ")}`,
+  ).toBe(true);
+  expect(
+    await core.profileExists("runtime_cycle_a"),
+    "Validate-only requests must not create profile directories as a side effect.",
+  ).toBe(false);
+});
+
+test("POSTFleetApply_WhenPlanIsValid_MaterializesProfilesAndFederationThroughRuntime", async () => {
+  const plan = runtimeFleetPlan("runtime_apply", [
+    { id: "runtime_apply_root", groups: ["executives"], roles: ["executive"], mcp: ["slack"] },
+    { id: "runtime_apply_vp", manager: "runtime_apply_root", groups: ["engineering"], roles: ["vp"], mcp: ["github"] },
+  ]);
+  const secureFleetHandler = runtime.createRuntimeFetchHandler({ cwd: workdir, authToken: "fleet-apply-token" });
+
+  const { response, body } = await postJsonWithHandler(secureFleetHandler, "/api/fleet/apply", { plan }, "fleet-apply-token");
+  const agents = await fetchJson("/api/agents");
+  const events = await fetchJson("/api/events?type=fleet.apply.complete&actor=coo&limit=10");
+  const vpPack = await core.readAgentPack("runtime_apply_vp");
+
+  expectStatus(response, 202, "valid fleet apply should be accepted and materialized by the runtime control plane");
+  expect(
+    body.applied,
+    "Runtime apply responses must explicitly state that profile/federation writes happened.",
+  ).toBe(true);
+  expect(
+    agents.body.agents.some((agent: any) => agent.profile === "runtime_apply_vp"),
+    "Applied fleet agents must become visible through the live agents API without dashboard fixtures.",
+  ).toBe(true);
+  expect(
+    vpPack.identity.manager,
+    "The runtime-applied agent pack must preserve manager edges for Lash-aware delegation.",
+  ).toBe("runtime_apply_root");
+  expect(
+    events.body.events.some((event: any) => event.resource === "fleet:runtime_apply"),
+    "Fleet materialization must emit an audit event so generated org changes are accountable.",
+  ).toBe(true);
+});
+
+test("POSTFleetApply_WhenRuntimeHasNoBearerToken_ReturnsWriteAuthRequiredWithoutWritingProfiles", async () => {
+  const plan = runtimeFleetPlan("runtime_apply_open", [
+    { id: "runtime_apply_open_root", groups: ["executives"], roles: ["executive"] },
+  ]);
+
+  const { response, body } = await postJson("/api/fleet/apply", { plan });
+
+  expectStatus(response, 401, "fleet apply mutates profiles and federation policy, so it must require explicit bearer auth even on loopback runtimes");
+  expect(
+    body.error,
+    "Write-auth failures need a stable code so the dashboard can explain why materialization is locked.",
+  ).toBe("write_auth_required");
+  expect(
+    await core.profileExists("runtime_apply_open_root"),
+    "Unauthenticated fleet apply must fail before creating any profile directories.",
+  ).toBe(false);
+});
+
+test("POSTFleetPlan_WhenHeadAgentReturnsNonYaml_ReturnsInvalidPlanInsteadOfApplyingFallbacks", async () => {
+  const route = "/api/fleet/plan";
+  const secureFleetHandler = runtime.createRuntimeFetchHandler({ cwd: workdir, authToken: "fleet-plan-token" });
+
+  const { response, body } = await postJsonWithHandler(secureFleetHandler, route, {
+    profile: "coo",
+    prompt: "Design the company you want to run.",
+  }, "fleet-plan-token");
+
+  expectStatus(response, 422, "the planning route should reject non-contract model output instead of treating prose as a fleet");
+  expect(
+    body.error,
+    "Invalid generated plan errors must use a stable code for the dashboard planning modal.",
+  ).toBe("invalid_fleet_plan");
+  expect(
+    body.result.profile,
+    "Even invalid fleet plans should include prompt run metadata so operators can inspect what the head agent produced.",
+  ).toBe("coo");
+});
+
+test("POSTFleetPlan_WhenRuntimeHasNoBearerToken_ReturnsWriteAuthRequiredBeforeModelExecution", async () => {
+  const route = "/api/fleet/plan";
+
+  const { response, body } = await postJson(route, {
+    profile: "coo",
+    prompt: "Design the company you want to run.",
+  });
+
+  expectStatus(response, 401, "fleet planning executes an agent prompt, so browser-originated planning must require explicit bearer auth");
+  expect(
+    body.error,
+    "Fleet planning auth failures need the same stable code as fleet materialization.",
+  ).toBe("write_auth_required");
+});
+
 test("GETAgents_WhenLegacyProfileIsMissingAgentPack_ReturnsPartialSnapshotInsteadOfPoisoningFleet", async () => {
   await core.initProfile("legacy-packless", { role: "operator" });
   await rm(core.profilePaths("legacy-packless").agentPack, { force: true });
@@ -1061,8 +1168,48 @@ async function postJson(path: string, body?: unknown): Promise<{ response: Respo
   return { response, body: parsed };
 }
 
+async function postJsonWithHandler(
+  handler: ReturnType<typeof runtime.createRuntimeFetchHandler>,
+  path: string,
+  body: unknown,
+  token: string,
+): Promise<{ response: Response; body: any }> {
+  const response = await handler(new Request(`http://runtime.test${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  }));
+  const parsed = await response.json();
+  return { response, body: parsed };
+}
+
 function expectStatus(response: Response, expected: number, reason: string) {
   expect(response.status, `${reason}; expected HTTP ${expected}, received HTTP ${response.status}.`).toBe(expected);
+}
+
+function runtimeFleetPlan(
+  name: string,
+  agents: Array<{ id: string; manager?: string; groups?: string[]; roles?: string[]; mcp?: string[] }>,
+) {
+  return {
+    version: 1,
+    kind: "union-street.fleet-plan",
+    name,
+    mission: `Operate ${name}.`,
+    root: agents.find((agent) => !agent.manager)?.id ?? agents[0]?.id ?? "",
+    generatedBy: "coo",
+    agents: agents.map((agent) => ({
+      id: agent.id,
+      displayName: agent.id,
+      title: "Runtime Generated Agent",
+      ...(agent.manager ? { manager: agent.manager } : {}),
+      groups: agent.groups ?? ["generated"],
+      roles: agent.roles ?? ["agent"],
+      soul: `Operate ${name} as @${agent.id}.`,
+      model: { provider: "codex", id: "gpt-5.4" },
+      ...(agent.mcp ? { mcp: agent.mcp } : {}),
+    })),
+  };
 }
 
 function titleCaseId(id: string): string {

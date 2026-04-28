@@ -658,6 +658,7 @@ export function App() {
               onOpenChat={openChatForAgent}
               onOpenAgents={() => setActiveTab("Agents")}
               onOpenAudit={() => setActiveTab("Audit Logs")}
+              onFleetApplied={data.reload}
             />
           )}
         </section>

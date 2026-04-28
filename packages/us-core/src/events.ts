@@ -32,6 +32,9 @@ export type ControlPlaneEventType =
   | "prompt.tool.call"
   | "prompt.run.complete"
   | "prompt.run.fail"
+  | "fleet.plan.create"
+  | "fleet.apply.reject"
+  | "fleet.apply.complete"
   | "webhook.received"
   | "audit.test";
 

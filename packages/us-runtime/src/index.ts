@@ -9,7 +9,9 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   FileMemoryStore,
   US_HOME,
+  applyFleetPlan,
   claimDueSchedulerJobs,
+  createFleetPlanningPrompt,
   discoverModelGroups,
   dueSchedulerJobs,
   executeSchedulerRun,
@@ -23,6 +25,8 @@ import {
   readAgentPack,
   readSchedulerRuns,
   listSessions,
+  normalizeFleetPlan,
+  parseFleetPlanText,
   resolveAgentPrincipal,
   resolveAgentRuntime,
   resolveDelegationTargets,
@@ -31,6 +35,7 @@ import {
   profileExists,
   readModelChain,
   runAgentPrompt,
+  validateFleetPlan,
   summarizeUsage,
   writeEvent,
   type ControlPlaneEventType,
@@ -121,6 +126,9 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
         "/api/agents",
         "/api/runtimes",
         "/api/models",
+        "/api/fleet/plan",
+        "/api/fleet/validate",
+        "/api/fleet/apply",
         "/api/events",
         "/api/events/stream",
         "/api/usage",
@@ -151,6 +159,92 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
       profile: profileResult.profile,
       groups: await discoverModelGroups({ profile: profileResult.profile }),
     });
+  }
+
+  if (request.method === "POST" && parts[1] === "fleet" && parts[2] === "plan" && parts.length === 3) {
+    if (!authorizeRuntimeWriteRequest(request, authToken)) {
+      return json({
+        error: "write_auth_required",
+        message: "fleet planning executes an agent prompt; start runtime with US_RUNTIME_BEARER_TOKEN and send Authorization: Bearer <token>",
+      }, 401);
+    }
+    const body = await readJsonBody(request);
+    if (isBodyTooLarge(body)) return json({ error: "body_too_large", message: body.message }, 413);
+    if (isMalformedJson(body)) return json({ error: "malformed_json", message: body.message }, 400);
+    const profile = await readExistingProfile(readPayloadString(body, "profile") ?? "");
+    if (!profile.ok) return json(profile.body, profile.status);
+    const prompt = readPayloadString(body, "prompt");
+    if (!prompt) return json({ error: "missing_prompt", message: "fleet planning requires JSON body { profile, prompt }" }, 400);
+    const result = await runAgentPrompt({
+      profile: profile.profile,
+      prompt: createFleetPlanningPrompt(profile.profile, prompt),
+      cwd,
+    });
+    let plan;
+    try {
+      plan = parseFleetPlanText(result.text);
+    } catch (error) {
+      await writeEvent({
+        type: "fleet.plan.create",
+        actor: profile.profile,
+        outcome: "failure",
+        reason: (error as Error).message,
+        trace: result.trace,
+        sessionId: result.sessionId,
+      });
+      return json({ error: "invalid_fleet_plan", message: (error as Error).message, raw: result.text, result }, 422);
+    }
+    const validation = await validateFleetPlan(plan, { allowExisting: true });
+    await writeEvent({
+      type: "fleet.plan.create",
+      actor: profile.profile,
+      subject: plan.root,
+      resource: `fleet:${plan.name}`,
+      outcome: validation.ok ? "success" : "failure",
+      reason: validation.ok ? undefined : validation.errors.join("; "),
+      trace: result.trace,
+      sessionId: result.sessionId,
+      payload: {
+        agents: plan.agents.map((agent) => agent.id),
+        errors: validation.errors,
+        warnings: validation.warnings,
+      },
+    });
+    return json({ plan, validation, result }, validation.ok ? 202 : 422);
+  }
+
+  if (request.method === "POST" && parts[1] === "fleet" && parts[2] === "validate" && parts.length === 3) {
+    const body = await readJsonBody(request);
+    if (isBodyTooLarge(body)) return json({ error: "body_too_large", message: body.message }, 413);
+    if (isMalformedJson(body)) return json({ error: "malformed_json", message: body.message }, 400);
+    const planResult = readBodyFleetPlan(body);
+    if (!planResult.ok) return json(planResult.body, planResult.status);
+    return json({
+      plan: planResult.plan,
+      validation: await validateFleetPlan(planResult.plan, { allowExisting: readBodyBoolean(body, "allowExisting") ?? false }),
+    });
+  }
+
+  if (request.method === "POST" && parts[1] === "fleet" && parts[2] === "apply" && parts.length === 3) {
+    if (!authorizeRuntimeWriteRequest(request, authToken)) {
+      return json({
+        error: "write_auth_required",
+        message: "fleet apply writes profiles and federation policy; start runtime with US_RUNTIME_BEARER_TOKEN and send Authorization: Bearer <token>",
+      }, 401);
+    }
+    const body = await readJsonBody(request);
+    if (isBodyTooLarge(body)) return json({ error: "body_too_large", message: body.message }, 413);
+    if (isMalformedJson(body)) return json({ error: "malformed_json", message: body.message }, 400);
+    const planResult = readBodyFleetPlan(body);
+    if (!planResult.ok) return json(planResult.body, planResult.status);
+    const result = await applyFleetPlan(planResult.plan, {
+      overwrite: readBodyBoolean(body, "overwrite") ?? false,
+      dryRun: readBodyBoolean(body, "dryRun") ?? false,
+    });
+    return json({
+      ...result,
+      ...(result.validation.ok ? {} : { message: result.validation.errors.join("; ") || "fleet plan did not validate" }),
+    }, result.validation.ok ? 202 : 409);
   }
 
   if (request.method === "POST" && parts[1] === "agents" && parts[2] && parts[3] === "prompt" && parts.length === 4) {
@@ -579,6 +673,19 @@ function readBodyModelTarget(
   return { ok: true, target: { provider, id } };
 }
 
+function readBodyFleetPlan(
+  body: unknown,
+): { ok: true; plan: ReturnType<typeof normalizeFleetPlan> } | { ok: false; status: number; body: { error: string; message: string } } {
+  if (!isRecord(body) || body.plan === undefined) {
+    return { ok: false, status: 400, body: { error: "missing_fleet_plan", message: "fleet route requires JSON body { plan }" } };
+  }
+  try {
+    return { ok: true, plan: normalizeFleetPlan(body.plan) };
+  } catch (error) {
+    return { ok: false, status: 400, body: { error: "invalid_fleet_plan", message: (error as Error).message } };
+  }
+}
+
 function readHeaderPrincipal(request: Request): string | undefined {
   const value = request.headers.get("x-union-street-actor") ?? request.headers.get("x-us-actor");
   return value?.trim() || undefined;
@@ -725,6 +832,13 @@ async function readExistingProfilesFromValues(
 function authorizeRuntimeRequest(request: Request, token: string | undefined): boolean {
   const expected = token?.trim();
   if (!expected) return true;
+  const auth = request.headers.get("authorization")?.trim() ?? "";
+  return constantTimeUtf8Equal(auth, `Bearer ${expected}`);
+}
+
+function authorizeRuntimeWriteRequest(request: Request, token: string | undefined): boolean {
+  const expected = token?.trim();
+  if (!expected) return false;
   const auth = request.headers.get("authorization")?.trim() ?? "";
   return constantTimeUtf8Equal(auth, `Bearer ${expected}`);
 }

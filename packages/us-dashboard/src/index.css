@@ -799,6 +799,157 @@ h1 {
   text-align: center;
 }
 
+.fleet-designer-modal {
+  width: min(1120px, 94vw);
+  max-height: 90vh;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.fleet-designer-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.fleet-designer-head h2,
+.fleet-designer-head p {
+  margin: 0;
+}
+
+.fleet-designer-head h2 {
+  color: var(--fg-1);
+  font-size: 28px;
+}
+
+.fleet-designer-head p {
+  color: var(--fg-3);
+  margin-top: 8px;
+  max-width: 760px;
+}
+
+.fleet-designer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(360px, 0.7fr);
+  min-height: 560px;
+}
+
+.fleet-designer-compose,
+.fleet-designer-preview {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 24px;
+  overflow: auto;
+}
+
+.fleet-designer-compose {
+  border-right: 1px solid var(--border-1);
+}
+
+.fleet-designer-compose textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--void);
+  color: var(--fg-1);
+  font: 14px/1.55 var(--font-sans);
+  padding: 14px;
+}
+
+.fleet-designer-preview h3 {
+  color: var(--fg-2);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.fleet-validation {
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 14px;
+}
+
+.fleet-validation b,
+.fleet-validation span {
+  display: block;
+}
+
+.fleet-validation b {
+  color: var(--fg-1);
+  font-family: var(--font-mono);
+}
+
+.fleet-validation span {
+  color: var(--fg-4);
+  margin-top: 4px;
+}
+
+.fleet-validation p {
+  color: var(--fg-3);
+  margin: 10px 0 0;
+}
+
+.fleet-validation.ok {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border-1));
+}
+
+.fleet-validation.fail {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border-1));
+}
+
+.fleet-plan-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fleet-plan-list div {
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface-2);
+  display: grid;
+  gap: 3px;
+  padding: 12px;
+}
+
+.fleet-plan-list b {
+  color: var(--fg-1);
+  font-family: var(--font-mono);
+}
+
+.fleet-plan-list span {
+  color: var(--fg-3);
+}
+
+.fleet-plan-list em {
+  color: var(--fg-5);
+  font-style: normal;
+}
+
+.fleet-designer-success,
+.fleet-designer-error {
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.fleet-designer-success {
+  border: 1px solid color-mix(in srgb, var(--success) 40%, var(--border-1));
+  color: var(--success);
+}
+
+.fleet-designer-error {
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border-1));
+  color: var(--warning);
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -3334,6 +3485,15 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .fleet-designer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fleet-designer-compose {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-1);
+  }
+
   .command-canvas-wrap {
     height: 560px;
   }
@@ -3453,6 +3613,11 @@ h1 {
   }
 
   .agent-editor-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fleet-designer-head {
     align-items: flex-start;
     flex-direction: column;
   }

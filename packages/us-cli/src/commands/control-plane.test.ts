@@ -18,6 +18,7 @@ const { schedulerCommand } = await import("./scheduler.ts");
 const { eventsCommand } = await import("./events.ts");
 const { runtimeEnsure, runtimeStatus } = await import("./runtime.ts");
 const { mcpCommand } = await import("./mcp.ts");
+const { fleetCommand } = await import("./fleet.ts");
 const { loadProfileRuntime } = await import("./chat.tsx");
 
 beforeAll(async () => {
@@ -150,6 +151,51 @@ describe("CLI control-plane commands", () => {
     expect(runtime.token, "Missing auth should leave the token empty so later model calls fail explicitly.").toBe("");
     expect(runtime.systemPrompt, "Chat runtime should compose the profile prompt from the agent files.").toContain("# SOUL");
     expect(persisted, "Building chat runtime should not write session turns before the user sends a message.").toEqual([]);
+  });
+
+  test("fleetCommand_WhenPlanIsValidatedAndApplied_MaterializesGeneratedAgents", async () => {
+    const fleetFile = join(workdir, "cli-fleet-plan.yaml");
+    await Bun.write(fleetFile, [
+      "version: 1",
+      "kind: union-street.fleet-plan",
+      "name: cli_fleet",
+      "mission: Operate a tiny CLI-generated org.",
+      "root: cli_fleet_root",
+      "generatedBy: coo",
+      "agents:",
+      "  - id: cli_fleet_root",
+      "    displayName: CLI Fleet Root",
+      "    title: COO",
+      "    groups: [executives]",
+      "    roles: [executive]",
+      "    soul: Run the generated CLI fleet.",
+      "    model: { provider: codex, id: gpt-5.4 }",
+      "  - id: cli_fleet_eng",
+      "    displayName: CLI Fleet Engineering",
+      "    title: VP Engineering",
+      "    manager: cli_fleet_root",
+      "    groups: [engineering]",
+      "    roles: [vp]",
+      "    mcp: [github]",
+      "    soul: Turn the generated fleet's engineering priorities into work.",
+      "    model: { provider: codex, id: gpt-5.4 }",
+    ].join("\n"));
+
+    const validateOutput = await captureOutput(() => fleetCommand("validate", fleetFile));
+    const applyOutput = await captureOutput(() => fleetCommand("apply", fleetFile));
+    const pack = await core.readAgentPack("cli_fleet_eng");
+    const federation = await core.readFederationConfig();
+
+    expect(validateOutput, "fleet validate should render a human review summary before any writes happen.").toContain("validation ok");
+    expect(applyOutput, "fleet apply should tell operators which generated profiles were materialized.").toContain("@cli_fleet_eng");
+    expect(
+      pack.identity.manager,
+      "CLI fleet apply must write atomic agent packs with the validated manager edge.",
+    ).toBe("cli_fleet_root");
+    expect(
+      federation.grants.some((grant) => grant.id === "fleet:cli_fleet:cli_fleet_eng:mcp" && grant.servers.includes("github")),
+      "CLI fleet apply must convert requested MCP access into federation grants instead of dashboard-only state.",
+    ).toBe(true);
   });
 
   test("schedulerCommand_WhenNowIsInvalid_FailsWithActionableMessage", async () => {

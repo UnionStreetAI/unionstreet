@@ -199,6 +199,7 @@ export { sanitizeOpenAICompatBaseUrl } from "./base-url.ts";
 export {
   ensureFederationConfig,
   readFederationConfig,
+  writeFederationConfig,
   resolveAgentPrincipal,
   resolveMcpGrantsForAgent,
   resolveDelegationTargets,
@@ -224,6 +225,25 @@ export type {
   DelegationTarget,
   DelegationRelation,
 } from "./federation.ts";
+
+export {
+  applyFleetPlan,
+  buildFleetAgentPacks,
+  createFleetPlanningPrompt,
+  normalizeFleetPlan,
+  parseFleetPlanText,
+  readFleetPlanFile,
+  serializeFleetPlan,
+  validateFleetPlan,
+  writeFleetPlanFile,
+} from "./fleet-plan.ts";
+export type {
+  FleetApplyOptions,
+  FleetApplyResult,
+  FleetPlan,
+  FleetPlanAgent,
+  FleetPlanValidation,
+} from "./fleet-plan.ts";
 
 export {
   createLashTrace,

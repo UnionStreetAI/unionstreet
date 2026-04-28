@@ -225,6 +225,51 @@ export interface RuntimePromptResult {
   usage?: { input?: number; output?: number; reasoning?: number; total?: number };
 }
 
+export interface RuntimeFleetPlan {
+  version: 1;
+  kind: "union-street.fleet-plan";
+  name: string;
+  mission: string;
+  root: string;
+  generatedBy: string;
+  agents: RuntimeFleetPlanAgent[];
+}
+
+export interface RuntimeFleetPlanAgent {
+  id: string;
+  displayName: string;
+  title: string;
+  manager?: string;
+  groups: string[];
+  roles: string[];
+  soul: string;
+  model: { provider: string; id: string };
+  fallback?: Array<{ provider: string; id: string }>;
+  mcp?: string[];
+  cli?: string[];
+  permissions?: string[];
+  secrets?: string[];
+}
+
+export interface RuntimeFleetValidation {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  summary: {
+    agents: number;
+    root: string;
+    groups: string[];
+    roles: string[];
+    mcpServers: string[];
+  };
+}
+
+export interface RuntimeFleetPlanResponse {
+  plan: RuntimeFleetPlan;
+  validation: RuntimeFleetValidation;
+  result?: RuntimePromptResult;
+}
+
 const DEFAULT_BASE_URL = "http://127.0.0.1:8787";
 
 export function runtimeBaseUrl(): string {
@@ -289,6 +334,43 @@ export async function sendAgentPrompt(
     signal,
   });
   return response.result;
+}
+
+export async function planFleet(
+  body: { profile: string; prompt: string },
+  signal?: AbortSignal,
+): Promise<RuntimeFleetPlanResponse> {
+  return runtimeJson<RuntimeFleetPlanResponse>("/api/fleet/plan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export async function validateFleet(
+  plan: RuntimeFleetPlan,
+  signal?: AbortSignal,
+): Promise<RuntimeFleetPlanResponse> {
+  return runtimeJson<RuntimeFleetPlanResponse>("/api/fleet/validate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ plan }),
+    signal,
+  });
+}
+
+export async function applyFleet(
+  plan: RuntimeFleetPlan,
+  body: { overwrite?: boolean; dryRun?: boolean } = {},
+  signal?: AbortSignal,
+): Promise<{ applied: boolean; profiles: string[]; validation: RuntimeFleetValidation }> {
+  return runtimeJson<{ applied: boolean; profiles: string[]; validation: RuntimeFleetValidation }>("/api/fleet/apply", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ plan, overwrite: body.overwrite === true, dryRun: body.dryRun === true }),
+    signal,
+  });
 }
 
 export async function runSchedulerTick(

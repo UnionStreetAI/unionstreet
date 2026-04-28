@@ -166,6 +166,11 @@ export async function readFederationConfig(): Promise<FederationConfig> {
   return normalizeFederationConfig(parsed);
 }
 
+export async function writeFederationConfig(config: FederationConfig): Promise<void> {
+  await fs.mkdir(dirname(FEDERATION_PATH), { recursive: true });
+  await fs.writeFile(FEDERATION_PATH, yaml.dump(normalizeFederationConfig(config), { lineWidth: 100 }));
+}
+
 export async function resolveAgentPrincipal(profile: string): Promise<FederatedAgentIdentity> {
   const cfg = await ensureFederationConfig();
   const profiles = await listProfiles();
