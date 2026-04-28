@@ -1,0 +1,6 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-docker",
+  "version": "0.0.0",
+  "description": "Union Street Docker runtime provider: container compute, volume-backed storage, and host-routed ingress."
+}

@@ -1,0 +1,35 @@
+{
+  "name": "union-street",
+  "version": "0.0.0",
+  "private": true,
+  "description": "US — minimal multi-agent harness. Recursive delegation, peered memory, autonomous wakeups.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "plugins/*"
+  ],
+  "scripts": {
+    "us": "bun run packages/us-cli/src/index.ts",
+    "doctor": "bun run packages/us-cli/src/index.ts doctor",
+    "dashboard": "bun run --cwd packages/us-dashboard dev",
+    "typecheck": "for p in packages/*; do if [ -f \"$p/package.json\" ]; then bun run --cwd \"$p\" typecheck || exit 1; fi; done",
+    "typecheck:parallel": "bun run scripts/parallel-check.ts --typecheck-only",
+    "test": "bun test",
+    "test:events": "bun run scripts/events-run.ts",
+    "test:prompt": "bun run scripts/prompt-run.ts",
+    "test:scheduler": "bun run scripts/scheduler-run.ts",
+    "test:ultimate": "bun run scripts/ultimate-run.ts",
+    "test:ultimate:live": "bun run scripts/ultimate-run.ts --live",
+    "check": "bun run scripts/full-run.ts",
+    "check:parallel": "bun run scripts/parallel-check.ts",
+    "clean": "rm -rf packages/*/dist plugins/*/dist node_modules"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "bun": ">=1.3.0",
+    "node": ">=20"
+  }
+}

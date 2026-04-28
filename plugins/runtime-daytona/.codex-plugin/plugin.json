@@ -1,0 +1,6 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-daytona",
+  "version": "0.0.0",
+  "description": "Union Street Daytona runtime provider: cloud development sandbox compute, persistent workspace storage, and HTTPS ingress."
+}

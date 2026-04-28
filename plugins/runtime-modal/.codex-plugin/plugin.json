@@ -1,0 +1,6 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-modal",
+  "version": "0.0.0",
+  "description": "Union Street Modal runtime provider: sandbox/function compute, Modal volumes, and HTTPS function ingress."
+}

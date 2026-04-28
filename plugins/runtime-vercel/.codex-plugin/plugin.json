@@ -1,0 +1,6 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-vercel",
+  "version": "0.0.0",
+  "description": "Union Street Vercel runtime provider: function compute, Blob/KV storage, and public HTTPS ingress."
+}
