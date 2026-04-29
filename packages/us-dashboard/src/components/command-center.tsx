@@ -1,8 +1,8 @@
 import { Background, Controls, MiniMap, Position, ReactFlow, type Edge, type Node, useEdgesState, useNodesState } from "@xyflow/react";
-import { BrainCircuit, FileCode2, MessageSquare, Network, Radio, ScrollText, Settings2, Sparkles, Zap } from "lucide-react";
+import { BrainCircuit, FileCode2, MessageSquare, Network, Radio, ScrollText, Send, Settings2, Sparkles, Terminal, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Agent } from "../App";
-import { applyFleet, planFleet, runtimeToken, type RuntimeEvent, type RuntimeFleetPlan, type RuntimeFleetValidation } from "../runtime-client";
+import { applyFleet, planFleet, runtimeToken, sendAgentPrompt, type RuntimeEvent, type RuntimeFleetPlan, type RuntimeFleetValidation, type RuntimePromptResult } from "../runtime-client";
 import { AgentEditor } from "./agent-editor";
 import type { DashboardModelGroup } from "./model-selector";
 import { Badge } from "./ui/badge";
@@ -11,6 +11,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
 type CommandView = "graph" | "timeline";
+type HeadDrawerTurn =
+  | { kind: "user"; id: string; text: string }
+  | { kind: "assistant"; id: string; text: string; result: RuntimePromptResult };
 
 export interface CommandCenterEventRow {
   time: string;
@@ -52,9 +55,12 @@ export function CommandCenter({
   const [selectedAgentId, setSelectedAgentId] = useState(agents[0]?.id ?? "");
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [fleetDesignerOpen, setFleetDesignerOpen] = useState(false);
+  const [headDrawerOpen, setHeadDrawerOpen] = useState(false);
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
+  const headAgent = agents.find((agent) => !agent.manager) ?? agents[0];
   const directReports = selectedAgent ? agents.filter((agent) => agent.manager === selectedAgent.id) : [];
   const activeEdges = useMemo(() => activeEdgeIds(rawEvents, agents), [rawEvents, agents]);
+  const hotAgents = useMemo(() => hotAgentIds(rawEvents, agents), [rawEvents, agents]);
   const graph = useMemo(() => commandGraph(agents, activeEdges, selectedAgent?.id), [agents, activeEdges, selectedAgent?.id]);
   const topologyKey = useMemo(() => agents.map((agent) => agent.id).join("|"), [agents]);
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
@@ -96,11 +102,35 @@ export function CommandCenter({
           </p>
         </div>
         <div className="actions">
+          <Button variant="laser" onClick={() => setHeadDrawerOpen(true)} disabled={!headAgent}><MessageSquare size={15} />Ask head agent</Button>
           <Button variant="secondary" onClick={onOpenAudit}><ScrollText size={15} />Audit trail</Button>
           <Button variant="secondary" onClick={() => setFleetDesignerOpen(true)}><Sparkles size={15} />Design fleet</Button>
-          <Button variant="laser" onClick={() => selectedAgent && onOpenChat(selectedAgent.id)}><MessageSquare size={15} />Steer selected</Button>
+          <Button variant="secondary" onClick={() => selectedAgent && onOpenChat(selectedAgent.id)}><MessageSquare size={15} />Steer selected</Button>
         </div>
       </div>
+
+      <section className="command-visual-strip">
+        <div>
+          <span>Head agent</span>
+          <b>{headAgent ? `@${headAgent.id}` : "none"}</b>
+          <em>{headAgent?.title ?? "waiting for runtime"}</em>
+        </div>
+        <div>
+          <span>Hot agents</span>
+          <b>{hotAgents.size}</b>
+          <em>{[...hotAgents].slice(0, 4).map((id) => `@${id}`).join(", ") || "no recent activity"}</em>
+        </div>
+        <div>
+          <span>Active routes</span>
+          <b>{activeEdges.size}</b>
+          <em>{activeEdges.size ? "live graph edges" : "quiet graph"}</em>
+        </div>
+        <div>
+          <span>Prompt bridge</span>
+          <b>{connected ? "ready" : "offline"}</b>
+          <em>{connected ? "runtime prompt endpoint visible" : runtimeError ?? "not connected"}</em>
+        </div>
+      </section>
 
       <section className="command-grid">
         <Card className="command-graph-card">
@@ -248,7 +278,135 @@ export function CommandCenter({
           onClose={() => setFleetDesignerOpen(false)}
         />
       )}
+
+      {headDrawerOpen && headAgent && (
+        <HeadAgentDrawer
+          agent={headAgent}
+          connected={connected}
+          onClose={() => setHeadDrawerOpen(false)}
+          onRefresh={onFleetApplied}
+        />
+      )}
     </>
+  );
+}
+
+function HeadAgentDrawer({
+  agent,
+  connected,
+  onClose,
+  onRefresh,
+}: {
+  agent: Agent;
+  connected: boolean;
+  onClose(): void;
+  onRefresh(): Promise<void>;
+}) {
+  const [prompt, setPrompt] = useState("Look across the fleet and tell me what needs attention next.");
+  const [turns, setTurns] = useState<HeadDrawerTurn[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function submitPrompt() {
+    const text = prompt.trim();
+    if (!text || isRunning) return;
+    setPrompt("");
+    setError(undefined);
+    setIsRunning(true);
+    const userTurn: HeadDrawerTurn = { kind: "user", id: `user-${Date.now()}`, text };
+    setTurns((current) => [...current, userTurn]);
+    try {
+      const result = await sendAgentPrompt(agent.id, { prompt: text });
+      setTurns((current) => [...current, {
+        kind: "assistant",
+        id: `assistant-${Date.now()}`,
+        text: result.text ?? "",
+        result,
+      }]);
+      await onRefresh();
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setIsRunning(false);
+    }
+  }
+
+  return (
+    <div className="head-chat-backdrop" role="presentation">
+      <aside className="head-chat-drawer" role="dialog" aria-modal="true" aria-label="Ask head agent">
+        <header className="head-chat-head">
+          <div>
+            <p className="eyebrow">Overview prompt bridge</p>
+            <h2>Ask @{agent.id}</h2>
+            <span>{agent.title} · {agent.model} · {agent.runtime}</span>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close head agent drawer"><X size={16} /></button>
+        </header>
+
+        <div className="head-chat-status">
+          <Badge tone={connected ? "success" : "warning"}>{connected ? "runtime live" : "runtime offline"}</Badge>
+          <code>us {agent.id} -p</code>
+        </div>
+
+        <div className="head-chat-thread">
+          {turns.length ? turns.map((turn) => turn.kind === "user" ? (
+            <div className="head-chat-turn user" key={turn.id}>
+              <span>You</span>
+              <p>{turn.text}</p>
+            </div>
+          ) : (
+            <div className="head-chat-turn assistant" key={turn.id}>
+              <span>@{agent.id}</span>
+              <p>{turn.text || "No text returned."}</p>
+              <PromptMetadata result={turn.result} />
+            </div>
+          )) : (
+            <div className="head-chat-empty">
+              <BrainCircuit size={20} />
+              <b>Prompt the head agent without leaving Overview.</b>
+              <p>Responses come from the runtime prompt path and refresh the fleet visualization after completion.</p>
+            </div>
+          )}
+        </div>
+
+        {error && <div className="head-chat-error">{error}</div>}
+
+        <form className="head-chat-compose" onSubmit={(event) => {
+          event.preventDefault();
+          void submitPrompt();
+        }}>
+          <textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder={`Ask @${agent.id} to inspect the fleet, delegate, or report.`}
+          />
+          <Button variant="laser" disabled={!connected || isRunning || !prompt.trim()}>
+            <Send size={15} />{isRunning ? "Running" : "Send"}
+          </Button>
+        </form>
+      </aside>
+    </div>
+  );
+}
+
+function PromptMetadata({ result }: { result: RuntimePromptResult }) {
+  const usage = result.usage;
+  const tools = result.toolCalls ?? [];
+  return (
+    <div className="prompt-metadata">
+      <div><Terminal size={13} /><span>{result.provider ?? "provider"}/{result.model ?? "model"}</span></div>
+      {result.trace && <div><span>trace</span><code>{result.trace}</code></div>}
+      {result.sessionId && <div><span>session</span><code>{result.sessionId}</code></div>}
+      {usage && <div><span>tokens</span><code>{usage.total ?? 0} total · {usage.input ?? 0} in · {usage.output ?? 0} out</code></div>}
+      {tools.length > 0 && (
+        <details>
+          <summary>{tools.length} tool call{tools.length === 1 ? "" : "s"}</summary>
+          {tools.map((tool, index) => (
+            <pre key={`${tool.name}-${index}`}>{tool.name ?? "tool"} {redactedJsonPreview(tool.args ?? {})}</pre>
+          ))}
+        </details>
+      )}
+    </div>
   );
 }
 
@@ -378,6 +536,33 @@ function CommandTimeline({ events }: { events: CommandCenterEventRow[] }) {
   );
 }
 
+function redactedJsonPreview(value: unknown): string {
+  const rendered = JSON.stringify(redactSensitiveValue(value), null, 2);
+  if (!rendered) return "{}";
+  return rendered.length > 1400 ? `${rendered.slice(0, 1400)}\n... <truncated>` : rendered;
+}
+
+function redactSensitiveValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSensitiveValue);
+  if (!value || typeof value !== "object") return redactSensitiveScalar(value);
+  const out: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    out[key] = isSensitiveKey(key) ? "<redacted>" : redactSensitiveValue(raw);
+  }
+  return out;
+}
+
+function redactSensitiveScalar(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  if (/^(sk-|xox[baprs]-|gh[pousr]_|ya29\.|eyJ)/i.test(value)) return "<redacted>";
+  if (value.length > 96 && /[A-Za-z0-9_./+=-]{48,}/.test(value)) return "<redacted>";
+  return value;
+}
+
+function isSensitiveKey(key: string): boolean {
+  return /(api[_-]?key|authorization|bearer|client[_-]?secret|cookie|credential|id[_-]?token|password|private[_-]?key|refresh[_-]?token|secret|session|token)/i.test(key);
+}
+
 function commandGraph(agents: Agent[], activeEdges: Set<string>, selectedAgentId: string | undefined): { nodes: Node[]; edges: Edge[] } {
   const levels = levelsForAgents(agents);
   const nodes: Node[] = agents.map((agent) => {
@@ -442,6 +627,18 @@ function activeEdgeIds(events: RuntimeEvent[], agents: Agent[]): Set<string> {
     }
   }
   return ids;
+}
+
+function hotAgentIds(events: RuntimeEvent[], agents: Agent[]): Set<string> {
+  const agentIds = new Set(agents.map((agent) => agent.id));
+  const hot = new Set<string>();
+  for (const event of events.slice(0, 60)) {
+    for (const value of [event.actor, event.subject, event.target]) {
+      const id = cleanHandle(value);
+      if (agentIds.has(id)) hot.add(id);
+    }
+  }
+  return hot;
 }
 
 function levelsForAgents(agents: Agent[]) {
