@@ -571,6 +571,56 @@ test("GETSchedulerJobs_WhenNoFilterIsProvided_ReturnsPulseAndCalendarJobsForEver
   expect(body.jobs.some((job: any) => job.id === "schedule:coo:weekly-status"), "Scheduler jobs must include the COO weekly schedule.").toBe(true);
 });
 
+test("POSTSchedulerJobs_WhenRouteIsValid_PersistsOrderedCalendarOrchestration", async () => {
+  const secureHandler = runtime.createRuntimeFetchHandler({ cwd: workdir, authToken: "scheduler-create-token" });
+  const route = ["coo", "vp-eng", "dir-eng-infra"];
+  const body = {
+    owner: "coo",
+    name: "Runtime created escalation route",
+    cron: "20 14 * * THU",
+    timezone: "America/Los_Angeles",
+    prompt: "Escalate the highest-risk platform dependency and return the decision-ready next step.",
+    deliverables: ["risk summary", "owner", "deadline"],
+    route,
+  };
+
+  const created = await postJsonWithHandler(secureHandler, "/api/scheduler/jobs", body, "scheduler-create-token");
+  const jobs = await fetchJson("/api/scheduler/jobs?profile=coo");
+
+  try {
+    expectStatus(created.response, 201, "scheduler job creation should write valid ordered calendar routes through the runtime API");
+    expect(created.body.schedule.route, "The runtime response must echo the route that will be compiled into scheduler jobs.").toEqual(route);
+    expect(
+      jobs.body.jobs.some((job: any) => job.id === `schedule:coo:${created.body.schedule.id}` && job.route?.join(">") === route.join(">")),
+      "A newly-created calendar route must be visible through /api/scheduler/jobs without restarting the runtime.",
+    ).toBe(true);
+  } finally {
+    if (created.body.schedule?.id) await removeRuntimeSchedule("coo", created.body.schedule.id);
+  }
+});
+
+test("POSTSchedulerJobs_WhenRuntimeHasNoBearerToken_ReturnsWriteAuthRequiredWithoutChangingCalendar", async () => {
+  const insecureHandler = runtime.createRuntimeFetchHandler({ cwd: workdir, authToken: undefined });
+
+  const { response, body } = await postJsonWithHandler(insecureHandler, "/api/scheduler/jobs", {
+    owner: "coo",
+    name: "Should not write",
+    cron: "5 12 * * FRI",
+    timezone: "UTC",
+    prompt: "This should not be persisted.",
+    deliverables: ["none"],
+    route: ["coo"],
+  }, "ignored-token");
+  const pack = await core.readAgentPack("coo");
+
+  expectStatus(response, 401, "scheduler job creation must require explicit runtime bearer auth because it mutates agent config");
+  expect(body.error, "Unauthenticated calendar writes must use a stable error code for dashboard handling.").toBe("write_auth_required");
+  expect(
+    pack.schedule.some((schedule: any) => schedule.name === "Should not write"),
+    "Unauthenticated scheduler writes must not persist a calendar event.",
+  ).toBe(false);
+});
+
 test("GETSchedulerDue_WhenSuppliedDeterministicTime_ReturnsOnlyDueJobs", async () => {
   const monday0915 = Date.UTC(2026, 3, 27, 9, 15);
 
@@ -1185,6 +1235,14 @@ async function postJsonWithHandler(
 
 function expectStatus(response: Response, expected: number, reason: string) {
   expect(response.status, `${reason}; expected HTTP ${expected}, received HTTP ${response.status}.`).toBe(expected);
+}
+
+async function removeRuntimeSchedule(profile: string, scheduleId: string) {
+  const pack = await core.readAgentPack(profile);
+  await core.writeAgentPack(profile, {
+    ...pack,
+    schedule: pack.schedule.filter((schedule: any) => schedule.id !== scheduleId),
+  });
 }
 
 function runtimeFleetPlan(

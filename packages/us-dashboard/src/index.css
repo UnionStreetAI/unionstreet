@@ -3044,6 +3044,117 @@ h1 {
   font-size: 11px;
 }
 
+.orchestration-builder {
+  margin-bottom: 16px;
+}
+
+.orchestration-builder .card-content {
+  display: grid;
+  gap: 16px;
+}
+
+.orchestration-form-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(120px, 0.65fr) minmax(120px, 0.65fr) minmax(220px, 1fr);
+  gap: 12px;
+}
+
+.orchestration-form-grid.wide {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+}
+
+.route-builder {
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface-0);
+  overflow: hidden;
+}
+
+.route-builder-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.route-builder-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.route-builder-head b {
+  color: var(--fg-1);
+  font-size: 14px;
+}
+
+.route-builder-head span {
+  color: var(--fg-4);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-step-list {
+  display: grid;
+  gap: 1px;
+}
+
+.route-step-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface-1);
+}
+
+.route-step-row select {
+  width: 100%;
+  min-width: 0;
+}
+
+.route-step-row > span {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--border-2);
+  color: var(--laser);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.orchestration-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+}
+
+.orchestration-actions code {
+  color: var(--fg-4);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-error {
+  border: 1px solid color-mix(in srgb, #ef4444 48%, var(--border-1));
+  border-radius: 8px;
+  background: color-mix(in srgb, #ef4444 10%, var(--surface-1));
+  color: color-mix(in srgb, #fecaca 82%, var(--fg-1));
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
 .schedule-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 420px;
@@ -3500,6 +3611,17 @@ h1 {
 
   .fleet-grid {
     grid-template-columns: 1fr;
+  }
+
+  .orchestration-form-grid,
+  .orchestration-form-grid.wide {
+    grid-template-columns: 1fr;
+  }
+
+  .orchestration-actions,
+  .route-builder-head {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .schedule-grid {

@@ -12,6 +12,7 @@ import {
   applyFleetPlan,
   claimDueSchedulerJobs,
   createFleetPlanningPrompt,
+  createScheduledOrchestration,
   discoverModelGroups,
   dueSchedulerJobs,
   executeSchedulerRun,
@@ -133,6 +134,7 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
         "/api/events/stream",
         "/api/usage",
         "/api/scheduler/jobs",
+        "POST /api/scheduler/jobs",
         "/api/scheduler/tick",
         "/api/webhooks/:source",
       ],
@@ -339,6 +341,32 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
     return json({ jobs: await listSchedulerJobs(profilesResult.profiles ?? undefined) });
   }
 
+  if (request.method === "POST" && parts[1] === "scheduler" && parts[2] === "jobs" && parts.length === 3) {
+    if (!authorizeRuntimeWriteRequest(request, authToken)) {
+      return json({
+        error: "write_auth_required",
+        message: "scheduler job creation writes agent schedule config; start runtime with US_RUNTIME_BEARER_TOKEN and send Authorization: Bearer <token>",
+      }, 401);
+    }
+    const body = await readJsonBody(request);
+    if (isBodyTooLarge(body)) return json({ error: "body_too_large", message: body.message }, 413);
+    if (isMalformedJson(body)) return json({ error: "malformed_json", message: body.message }, 400);
+    try {
+      const schedule = await createScheduledOrchestration({
+        owner: readPayloadString(body, "owner") ?? "",
+        name: readPayloadString(body, "name") ?? "",
+        cron: readPayloadString(body, "cron") ?? "",
+        timezone: readPayloadString(body, "timezone") ?? "",
+        prompt: readPayloadString(body, "prompt") ?? "",
+        deliverables: readBodyStringArray(body, "deliverables") ?? [],
+        route: readBodyStringArray(body, "route") ?? [],
+      });
+      return json({ schedule }, 201);
+    } catch (error) {
+      return json({ error: "invalid_schedule", message: (error as Error).message }, 400);
+    }
+  }
+
   if (request.method === "GET" && parts[1] === "scheduler" && parts[2] === "due" && parts.length === 3) {
     const profilesResult = await readExistingProfilesParam(url);
     if (!profilesResult.ok) return json(profilesResult.body, profilesResult.status);
@@ -361,22 +389,41 @@ async function routeRequest(request: Request, cwd: string, authToken?: string): 
     const runs = [];
     for (const run of claimed) {
       runs.push(await executeSchedulerRun(run, async (job, schedulerRun) => {
-        const result = await runAgentPrompt({
-          profile: job.profile,
-          prompt: job.prompt,
-          cwd,
-          trace: `scheduler:${schedulerRun.id}`,
-          sessionId: `scheduler-${job.profile}-${job.kind}-${job.dueAt}`,
-        });
-        return {
-          trace: result.trace,
-          sessionId: result.sessionId,
-          result: {
+        const route = job.route.length ? job.route : [job.profile];
+        const steps = [];
+        let upstream = "";
+        for (const [index, profile] of route.entries()) {
+          const result = await runAgentPrompt({
+            profile,
+            prompt: runtimeScheduledRoutePrompt(job.name, job.prompt, route, profile, index, upstream, job.deliverables),
+            cwd,
+            trace: `scheduler:${schedulerRun.id}`,
+            sessionId: `scheduler-${job.profile}-${job.kind}-${job.dueAt}-${index + 1}-${profile}`,
+          });
+          upstream = result.text;
+          steps.push({
+            profile,
             text: result.text,
             model: `${result.provider}/${result.model}`,
             steps: result.steps,
             toolCalls: result.toolCalls,
             usage: result.usage,
+            trace: result.trace,
+            sessionId: result.sessionId,
+          });
+        }
+        const last = steps.at(-1);
+        return {
+          trace: `scheduler:${schedulerRun.id}`,
+          sessionId: last?.sessionId,
+          result: {
+            text: last?.text ?? "",
+            model: last?.model,
+            route,
+            routeSteps: steps,
+            steps: steps.reduce((count, step) => count + (Array.isArray(step.steps) ? step.steps.length : 1), 0),
+            toolCalls: steps.flatMap((step) => step.toolCalls ?? []),
+            usage: aggregateRuntimeStepUsage(steps),
           },
         };
       }));
@@ -671,6 +718,36 @@ function readBodyModelTarget(
     return { ok: false, status: 400, body: { error: "invalid_model", message: "model provider/id may only contain letters, digits, dots, underscores, colons, slashes, and dashes" } };
   }
   return { ok: true, target: { provider, id } };
+}
+
+function runtimeScheduledRoutePrompt(
+  name: string,
+  prompt: string,
+  route: string[],
+  profile: string,
+  index: number,
+  upstream: string,
+  deliverables: string[],
+): string {
+  return [
+    `Scheduled orchestration: ${name}`,
+    `Route: ${route.map((agent) => `@${agent}`).join(" -> ")}`,
+    `Current step: ${index + 1}/${route.length} (@${profile})`,
+    "",
+    "Instructions:",
+    prompt,
+    ...(upstream ? ["", "Upstream output from the previous route step:", upstream] : []),
+    ...(deliverables.length ? ["", "Deliverables:", ...deliverables.map((deliverable) => `- ${deliverable}`)] : []),
+  ].join("\n");
+}
+
+function aggregateRuntimeStepUsage(steps: Array<{ usage?: { input?: number; output?: number; reasoning?: number; total?: number } }>) {
+  return steps.reduce((total, step) => ({
+    input: total.input + (step.usage?.input ?? 0),
+    output: total.output + (step.usage?.output ?? 0),
+    reasoning: total.reasoning + (step.usage?.reasoning ?? 0),
+    total: total.total + (step.usage?.total ?? 0),
+  }), { input: 0, output: 0, reasoning: 0, total: 0 });
 }
 
 function readBodyFleetPlan(

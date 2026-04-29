@@ -54,6 +54,7 @@ export interface AgentPackSchedule {
   timezone: string;
   prompt: string;
   deliverables: string[];
+  route?: string[];
 }
 
 export interface AgentPackRuntime {
@@ -146,6 +147,7 @@ const AgentPackSchema = z.object({
     timezone: z.string().min(1),
     prompt: z.string().default(""),
     deliverables: z.array(z.string()).default([]),
+    route: z.array(z.string().min(1)).default([]),
   })).default([]),
   runtime: z.object({
     environment: z.string().min(1),
@@ -249,6 +251,7 @@ export function buildAgentPackFromOrgNode(
         timezone: "America/Los_Angeles",
         prompt: `Wake @${node.id} for a scoped status review. Preserve Lash visibility and summarize only decision-ready work.`,
         deliverables: ["status summary", "material risks", "next delegation or report action"],
+        route: [node.id],
       },
     ],
     runtime: {

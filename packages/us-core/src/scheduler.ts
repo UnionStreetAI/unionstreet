@@ -2,8 +2,8 @@ import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import lockfile from "proper-lockfile";
-import { listProfiles } from "./profile.ts";
-import { readAgentPack, type AgentPack, type AgentPackSchedule } from "./agent-pack.ts";
+import { listProfiles, profileExists } from "./profile.ts";
+import { readAgentPack, writeAgentPack, type AgentPack, type AgentPackSchedule } from "./agent-pack.ts";
 import { SCHEDULER_RUNS_PATH } from "./paths.ts";
 import { writeEvent } from "./events.ts";
 import { runAgentPrompt } from "./prompt-runner.ts";
@@ -21,6 +21,7 @@ export interface SchedulerJob {
   cadence: string;
   timezone: string;
   enabled: boolean;
+  route: string[];
 }
 
 export interface DueSchedulerJob extends SchedulerJob {
@@ -52,7 +53,18 @@ export interface SchedulerExecutorResult {
 
 export type SchedulerExecutor = (job: DueSchedulerJob, run: SchedulerRun) => Promise<SchedulerExecutorResult | void>;
 
+export interface ScheduledOrchestrationInput {
+  owner: string;
+  name: string;
+  cron: string;
+  timezone: string;
+  prompt: string;
+  deliverables: string[];
+  route: string[];
+}
+
 const PULSE_INTERVAL_MS = 30 * 60 * 1000;
+const MAX_SCHEDULE_ROUTE_STEPS = 12;
 
 export async function listSchedulerJobs(profiles?: string[]): Promise<SchedulerJob[]> {
   const profileList = profiles ?? await listProfiles();
@@ -199,6 +211,33 @@ export async function readSchedulerRuns(): Promise<SchedulerRun[]> {
   return out;
 }
 
+export async function createScheduledOrchestration(input: ScheduledOrchestrationInput): Promise<AgentPackSchedule> {
+  const schedule = await normalizeScheduledOrchestration(input);
+  const pack = await readAgentPack(input.owner);
+  if (pack.schedule.some((candidate) => candidate.id === schedule.id)) {
+    throw new Error(`schedule "${schedule.id}" already exists for @${input.owner}`);
+  }
+  await writeAgentPack(input.owner, {
+    ...pack,
+    schedule: [...pack.schedule, schedule],
+  });
+  await writeEvent({
+    type: "scheduler.schedule.create",
+    actor: input.owner,
+    subject: input.owner,
+    resource: `schedule:${input.owner}:${schedule.id}`,
+    outcome: "success",
+    payload: {
+      name: schedule.name,
+      cron: schedule.cron,
+      timezone: schedule.timezone,
+      route: schedule.route,
+      deliverables: schedule.deliverables,
+    },
+  });
+  return schedule;
+}
+
 async function appendSchedulerRun(run: SchedulerRun): Promise<void> {
   await fs.mkdir(dirname(SCHEDULER_RUNS_PATH), { recursive: true });
   await fs.appendFile(SCHEDULER_RUNS_PATH, JSON.stringify(run) + "\n", { mode: 0o600 });
@@ -223,23 +262,43 @@ async function withSchedulerRunLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function defaultSchedulerExecutor(job: DueSchedulerJob, run: SchedulerRun): Promise<SchedulerExecutorResult> {
-  const prompt = await runAgentPrompt({
-    profile: job.profile,
-    prompt: job.prompt,
-    trace: `scheduler:${run.id}`,
-    sessionId: `scheduler-${job.profile}-${job.kind}-${job.dueAt}`,
-  });
-
-  return {
-    trace: prompt.trace,
-    sessionId: prompt.sessionId,
-    result: {
+  const route = normalizedJobRoute(job);
+  const steps = [];
+  let upstream = "";
+  for (const [index, profile] of route.entries()) {
+    const prompt = await runAgentPrompt({
+      profile,
+      prompt: scheduledRoutePrompt(job, profile, index, upstream),
+      trace: `scheduler:${run.id}`,
+      sessionId: `scheduler-${job.profile}-${job.kind}-${job.dueAt}-${index + 1}-${profile}`,
+    });
+    upstream = prompt.text;
+    steps.push({
+      profile,
       text: prompt.text,
       provider: prompt.provider,
       model: prompt.model,
       steps: prompt.steps,
       toolCalls: prompt.toolCalls,
       usage: prompt.usage,
+      trace: prompt.trace,
+      sessionId: prompt.sessionId,
+    });
+  }
+  const last = steps.at(-1);
+
+  return {
+    trace: `scheduler:${run.id}`,
+    sessionId: last?.sessionId,
+    result: {
+      text: last?.text ?? "",
+      provider: last?.provider,
+      model: last?.model,
+      route,
+      routeSteps: steps,
+      steps: steps.reduce((count, step) => count + (Array.isArray(step.steps) ? step.steps.length : 1), 0),
+      toolCalls: steps.flatMap((step) => step.toolCalls ?? []),
+      usage: aggregateStepUsage(steps),
       deliverables: job.deliverables,
     },
   };
@@ -258,6 +317,7 @@ function jobsFromPack(pack: AgentPack): SchedulerJob[] {
       cadence: "every 30m",
       timezone: "local",
       enabled: true,
+      route: [pack.id],
     });
   }
   for (const schedule of pack.schedule) {
@@ -277,7 +337,76 @@ function scheduleJob(pack: AgentPack, schedule: AgentPackSchedule): SchedulerJob
     cadence: schedule.cron,
     timezone: schedule.timezone,
     enabled: true,
+    route: schedule.route?.length ? schedule.route : [pack.id],
   };
+}
+
+async function normalizeScheduledOrchestration(input: ScheduledOrchestrationInput): Promise<AgentPackSchedule> {
+  const owner = stripAt(input.owner);
+  if (!owner || !await profileExists(owner)) throw new Error(`unknown schedule owner @${owner || input.owner}`);
+  const route = input.route.map(stripAt).filter(Boolean);
+  if (!route.length) throw new Error("scheduled orchestration route must include at least one agent");
+  if (route.length > MAX_SCHEDULE_ROUTE_STEPS) throw new Error(`scheduled orchestration route cannot exceed ${MAX_SCHEDULE_ROUTE_STEPS} agents`);
+  if (new Set(route).size !== route.length) throw new Error("scheduled orchestration route cannot contain repeated agents");
+  if (route[0] !== owner) throw new Error(`scheduled orchestration route must start with owner @${owner}`);
+  for (const profile of route) {
+    if (!await profileExists(profile)) throw new Error(`scheduled orchestration route contains unknown agent @${profile}`);
+  }
+  const name = input.name.trim();
+  const prompt = input.prompt.trim();
+  const cron = input.cron.trim();
+  const timezone = input.timezone.trim();
+  const deliverables = input.deliverables.map((item) => item.trim()).filter(Boolean);
+  if (!name) throw new Error("scheduled orchestration name is required");
+  if (!prompt) throw new Error("scheduled orchestration prompt is required");
+  if (!timezone) throw new Error("scheduled orchestration timezone is required");
+  if (latestCronDueAt(cron, Date.UTC(2026, 0, 5, 12)) === undefined) throw new Error(`invalid schedule cron "${cron}"`);
+  return {
+    id: slugifyScheduleName(name),
+    name,
+    cron,
+    timezone,
+    prompt,
+    deliverables,
+    route,
+  };
+}
+
+function normalizedJobRoute(job: SchedulerJob): string[] {
+  const route = job.route.map(stripAt).filter(Boolean);
+  return route.length ? route : [job.profile];
+}
+
+function scheduledRoutePrompt(job: DueSchedulerJob, profile: string, index: number, upstream: string): string {
+  const route = normalizedJobRoute(job);
+  return [
+    `Scheduled orchestration: ${job.name}`,
+    `Route: ${route.map((agent) => `@${agent}`).join(" -> ")}`,
+    `Current step: ${index + 1}/${route.length} (@${profile})`,
+    "",
+    "Instructions:",
+    job.prompt,
+    ...(upstream ? ["", "Upstream output from the previous route step:", upstream] : []),
+    ...(job.deliverables.length ? ["", "Deliverables:", ...job.deliverables.map((deliverable) => `- ${deliverable}`)] : []),
+  ].join("\n");
+}
+
+function stripAt(value: string): string {
+  return value.trim().replace(/^@/, "");
+}
+
+function slugifyScheduleName(value: string): string {
+  const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  return slug || `schedule-${Date.now().toString(36)}`;
+}
+
+function aggregateStepUsage(steps: Array<{ usage?: { input?: number; output?: number; reasoning?: number; total?: number } }>) {
+  return steps.reduce((total, step) => ({
+    input: total.input + (step.usage?.input ?? 0),
+    output: total.output + (step.usage?.output ?? 0),
+    reasoning: total.reasoning + (step.usage?.reasoning ?? 0),
+    total: total.total + (step.usage?.total ?? 0),
+  }), { input: 0, output: 0, reasoning: 0, total: 0 });
 }
 
 function latestDueAt(job: SchedulerJob, now: number, runs: SchedulerRun[]): number | undefined {

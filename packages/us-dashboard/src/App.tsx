@@ -45,6 +45,7 @@ import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import {
   loadRuntimeSnapshot,
   loadRuntimeModels,
+  createSchedulerJob,
   ensureAgentRuntime,
   runSchedulerTick,
   sendAgentPrompt,
@@ -836,7 +837,8 @@ function pluginsFromRuntime(snapshot: RuntimeSnapshot): PluginRow[] {
 
 function scheduledSyncsFromJobs(jobs: RuntimeSchedulerJob[]) {
   return jobs.map((job) => {
-    const parsed = parseCronish(job.cron);
+    const parsed = parseCronish(job.cron ?? job.cadence);
+    const route = job.route?.length ? job.route : [job.profile];
     return {
       id: job.id,
       day: parsed.day,
@@ -844,8 +846,8 @@ function scheduledSyncsFromJobs(jobs: RuntimeSchedulerJob[]) {
       duration: job.kind === "pulse" ? "heartbeat" : "30m",
       title: job.name ?? `${job.kind} ${job.profile}`,
       topic: job.prompt?.split("\n")[0] ?? `${job.kind} wakeup`,
-      agents: [job.profile],
-      lash: `scheduler -> ${job.profile}`,
+      agents: route,
+      lash: `scheduler -> ${route.map((agent) => `@${agent}`).join(" -> ")}`,
       command: `us ${job.profile} -p ${JSON.stringify(job.prompt ?? "Run scheduled job.")}`,
       deliverables: job.deliverables?.length ? job.deliverables : [job.kind === "pulse" ? "heartbeat report" : "scheduled deliverable"],
       status: job.enabled === false ? "draft" : "scheduled",
@@ -1348,8 +1350,18 @@ function SchedulePage({ agents, jobs, runs, reload }: { agents: Agent[]; jobs: R
   const scheduledSyncs = useMemo(() => scheduledSyncsFromJobs(jobs), [jobs]);
   const [selectedId, setSelectedId] = useState(scheduledSyncs[0]?.id ?? "");
   const [calendarView, setCalendarView] = useState<"day" | "week" | "month">("week");
+  const [eventName, setEventName] = useState("Cross-functional delivery review");
+  const [eventDay, setEventDay] = useState("MON");
+  const [eventTime, setEventTime] = useState("09:00");
+  const [eventTimezone, setEventTimezone] = useState("America/Los_Angeles");
+  const [eventRoute, setEventRoute] = useState<string[]>(() => agents.slice(0, 3).map((agent) => agent.id));
+  const [eventPrompt, setEventPrompt] = useState("Review current work, delegate the next concrete action, and report decision-ready status upward through Lash.");
+  const [eventDeliverables, setEventDeliverables] = useState("status summary\nmaterial blockers\nnext owner and deadline");
+  const [eventError, setEventError] = useState<string | null>(null);
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const selected = scheduledSyncs.find((sync) => sync.id === selectedId) ?? scheduledSyncs[0];
   const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const cronDays = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
   const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00"];
   const monthCells = [
     { day: 26, muted: true }, { day: 27, muted: false }, { day: 28, muted: false }, { day: 29, muted: false }, { day: 30, muted: false }, { day: 1, muted: false }, { day: 2, muted: false },
@@ -1370,9 +1382,66 @@ function SchedulePage({ agents, jobs, runs, reload }: { agents: Agent[]; jobs: R
     if (!selectedId && scheduledSyncs[0]) setSelectedId(scheduledSyncs[0].id);
   }, [scheduledSyncs, selectedId]);
 
+  useEffect(() => {
+    setEventRoute((current) => current.filter((agentId) => agents.some((agent) => agent.id === agentId)).length
+      ? current.filter((agentId) => agents.some((agent) => agent.id === agentId))
+      : agents.slice(0, 1).map((agent) => agent.id));
+  }, [agents]);
+
   async function runDueNow() {
     await runSchedulerTick({ execute: true });
     await reload();
+  }
+
+  function updateRouteAgent(index: number, agentId: string) {
+    setEventRoute((current) => current.map((value, routeIndex) => routeIndex === index ? agentId : value));
+  }
+
+  function addRouteStep() {
+    if (eventRoute.length >= 12) return;
+    const fallback = agents.find((agent) => !eventRoute.includes(agent.id))?.id ?? agents[0]?.id;
+    if (fallback) setEventRoute((current) => [...current, fallback]);
+  }
+
+  function removeRouteStep(index: number) {
+    setEventRoute((current) => current.filter((_, routeIndex) => routeIndex !== index));
+  }
+
+  async function createCalendarEvent() {
+    setEventError(null);
+    const route = eventRoute.filter(Boolean);
+    if (!route.length) {
+      setEventError("Choose at least one agent for the route.");
+      return;
+    }
+    if (new Set(route).size !== route.length) {
+      setEventError("Each agent can appear only once in a scheduled route.");
+      return;
+    }
+    if (!eventPrompt.trim()) {
+      setEventError("Add the prompt this scheduled route should execute.");
+      return;
+    }
+    setIsCreatingEvent(true);
+    try {
+      const owner = route[0]!;
+      const [hour, minute] = eventTime.split(":").map(Number);
+      const cron = `${minute} ${hour} * * ${eventDay}`;
+      await createSchedulerJob({
+        owner,
+        name: eventName,
+        cron,
+        timezone: eventTimezone,
+        prompt: eventPrompt,
+        deliverables: eventDeliverables.split("\n").map((item) => item.trim()).filter(Boolean),
+        route,
+      });
+      await reload();
+    } catch (error) {
+      setEventError((error as Error).message);
+    } finally {
+      setIsCreatingEvent(false);
+    }
   }
 
   return (
@@ -1385,9 +1454,86 @@ function SchedulePage({ agents, jobs, runs, reload }: { agents: Agent[]; jobs: R
         </div>
         <div className="actions">
           <Button variant="secondary"><Settings2 size={15} />Calendar settings</Button>
+          <Button variant="secondary" onClick={() => document.getElementById("schedule-event-builder")?.scrollIntoView({ behavior: "smooth", block: "start" })}><Plus size={15} />Create event</Button>
           <Button variant="laser" onClick={() => void runDueNow()}><CalendarDays size={15} />Run due now</Button>
         </div>
       </div>
+
+      <Card className="orchestration-builder" id="schedule-event-builder">
+        <CardHeader>
+          <div>
+            <CardTitle>Create scheduled orchestration</CardTitle>
+            <CardDescription>Pick a prompt and an explicit ordered route. The first agent owns the calendar event; each next agent receives the previous step as upstream context.</CardDescription>
+          </div>
+          <Badge tone="laser">{eventRoute.length || 0} step{eventRoute.length === 1 ? "" : "s"}</Badge>
+        </CardHeader>
+        <CardContent>
+          <div className="orchestration-form-grid">
+            <label className="editor-field">
+              <span>Event name</span>
+              <input value={eventName} onChange={(event) => setEventName(event.target.value)} />
+            </label>
+            <label className="editor-field">
+              <span>Day</span>
+              <select value={eventDay} onChange={(event) => setEventDay(event.target.value)}>
+                {cronDays.map((day) => <option key={day} value={day}>{day}</option>)}
+              </select>
+            </label>
+            <label className="editor-field">
+              <span>Time</span>
+              <input type="time" value={eventTime} onChange={(event) => setEventTime(event.target.value)} />
+            </label>
+            <label className="editor-field">
+              <span>Timezone</span>
+              <input value={eventTimezone} onChange={(event) => setEventTimezone(event.target.value)} />
+            </label>
+          </div>
+
+          <div className="route-builder">
+            <div className="route-builder-head">
+              <div>
+                <b>Invocation route</b>
+                <span>{eventRoute.map((agentId) => `@${agentId}`).join(" -> ") || "No route selected"}</span>
+              </div>
+              <Button variant="secondary" onClick={addRouteStep} disabled={!agents.length || eventRoute.length >= 12}><Plus size={14} />Add step</Button>
+            </div>
+            <div className="route-step-list">
+              {eventRoute.map((agentId, index) => (
+                <div className="route-step-row" key={`${index}-${agentId}`}>
+                  <span>{index + 1}</span>
+                  <select value={agentId} onChange={(event) => updateRouteAgent(index, event.target.value)} aria-label={`Route step ${index + 1}`}>
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>@{agent.id} · {agent.title}</option>
+                    ))}
+                  </select>
+                  <Button variant="secondary" size="icon" aria-label="Remove route step" onClick={() => removeRouteStep(index)} disabled={eventRoute.length <= 1}>
+                    <Square size={12} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="orchestration-form-grid wide">
+            <label className="editor-field">
+              <span>Prompt</span>
+              <textarea value={eventPrompt} onChange={(event) => setEventPrompt(event.target.value)} />
+            </label>
+            <label className="editor-field">
+              <span>Deliverables</span>
+              <textarea value={eventDeliverables} onChange={(event) => setEventDeliverables(event.target.value)} />
+            </label>
+          </div>
+
+          {eventError && <div className="form-error">{eventError}</div>}
+          <div className="orchestration-actions">
+            <code>{eventRoute[0] ? `owner=@${eventRoute[0]} · cron=${eventTime.split(":")[1]} ${eventTime.split(":")[0]} * * ${eventDay}` : "choose a route"}</code>
+            <Button variant="laser" onClick={() => void createCalendarEvent()} disabled={isCreatingEvent || !agents.length}>
+              <CalendarDays size={15} />{isCreatingEvent ? "Creating..." : "Create event"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <section className="calendar-toolbar">
         <div className="calendar-toolbar-left">

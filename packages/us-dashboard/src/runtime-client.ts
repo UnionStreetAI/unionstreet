@@ -163,9 +163,11 @@ export interface RuntimeSchedulerJob {
   kind: "pulse" | "schedule" | string;
   name?: string;
   cron?: string;
+  cadence?: string;
   timezone?: string;
   prompt?: string;
   deliverables?: string[];
+  route?: string[];
   dueAt?: number;
   enabled?: boolean;
 }
@@ -191,6 +193,7 @@ export interface RuntimePackSchedule {
   timezone?: string;
   prompt?: string;
   deliverables?: string[];
+  route?: string[];
 }
 
 export interface RuntimeMemoryEvent {
@@ -378,6 +381,26 @@ export async function runSchedulerTick(
   signal?: AbortSignal,
 ): Promise<{ runs: RuntimeSchedulerRun[] }> {
   return runtimeJson<{ runs: RuntimeSchedulerRun[] }>("/api/scheduler/tick", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export async function createSchedulerJob(
+  body: {
+    owner: string;
+    name: string;
+    cron: string;
+    timezone: string;
+    prompt: string;
+    deliverables: string[];
+    route: string[];
+  },
+  signal?: AbortSignal,
+): Promise<{ schedule: RuntimePackSchedule }> {
+  return runtimeJson<{ schedule: RuntimePackSchedule }>("/api/scheduler/jobs", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),

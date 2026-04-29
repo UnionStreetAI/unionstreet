@@ -316,6 +316,7 @@ export type {
 
 export {
   claimDueSchedulerJobs,
+  createScheduledOrchestration,
   dueSchedulerJobs,
   executeSchedulerRun,
   listSchedulerJobs,
@@ -329,6 +330,7 @@ export type {
   SchedulerJobKind,
   SchedulerRun,
   SchedulerRunStatus,
+  ScheduledOrchestrationInput,
 } from "./scheduler.ts";
 
 export {

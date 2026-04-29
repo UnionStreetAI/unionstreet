@@ -21,6 +21,7 @@ export type ControlPlaneEventType =
   | "secret.materialize"
   | "runtime.workspace.ensure"
   | "scheduler.due"
+  | "scheduler.schedule.create"
   | "scheduler.run.claim"
   | "scheduler.run.start"
   | "scheduler.run.complete"
