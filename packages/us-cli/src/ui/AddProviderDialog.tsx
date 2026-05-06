@@ -5,7 +5,7 @@
  *   1. Pick a provider from the curated catalog (server/providers.ts).
  *      Western providers only — sorted: popular first, then alphabetical.
  *   2. If api_key: prompt for the key, save to auth-profiles.json.
- *      If oauth: show a note pointing the user at `us-dev auth <subcmd>`
+ *      If oauth: show a note pointing the user at `us auth <subcmd>`
  *      (we don't run the OAuth browser flow inside the TUI in this build).
  */
 import { useEffect, useMemo, useRef, useState } from "react";

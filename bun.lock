@@ -45,10 +45,10 @@
       "version": "0.0.0",
     },
     "packages/us-cli": {
-      "name": "@unionstreet/us-dev",
+      "name": "@unionstreet/us",
       "version": "0.0.0",
       "bin": {
-        "us-dev": "./src/index.ts",
+        "us": "./src/index.ts",
       },
       "dependencies": {
         "@opentui/core": "^0.2.1",
@@ -327,11 +327,11 @@
 
     "@unionstreet/server": ["@unionstreet/server@workspace:packages/server"],
 
+    "@unionstreet/us": ["@unionstreet/us@workspace:packages/us-cli"],
+
     "@unionstreet/us-auth": ["@unionstreet/us-auth@workspace:packages/us-auth"],
 
     "@unionstreet/us-dashboard": ["@unionstreet/us-dashboard@workspace:packages/us-dashboard"],
-
-    "@unionstreet/us-dev": ["@unionstreet/us-dev@workspace:packages/us-cli"],
 
     "@vercel/oidc": ["@vercel/oidc@3.1.0", "", {}, "sha512-Fw28YZpRnA3cAHHDlkt7xQHiJ0fcL+NRcIqsocZQUSmbzeIKRpwttJjik5ZGanXP+vlA4SbTg+AbA3bP363l+w=="],
 

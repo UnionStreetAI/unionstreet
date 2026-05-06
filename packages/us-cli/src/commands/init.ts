@@ -34,9 +34,9 @@ export async function init(name: string, args: InitArgs): Promise<void> {
   }
   console.log("");
   console.log(kleur.bold("Next:"));
-  console.log(`  ${kleur.cyan("us-dev auth codex")}                # ChatGPT Plus/Pro/Team OAuth (shared across all profiles)`);
-  console.log(`  ${kleur.cyan("us-dev auth claude")}               # Claude Pro/Max OAuth (shared)`);
-  console.log(`  ${kleur.cyan(`us-dev auth status ${name}`)}        # see merged view (global + profile overrides)`);
-  console.log(kleur.dim(`  ${`us-dev auth codex ${name}`.padEnd(34)}# (optional) override credentials just for this profile`));
+  console.log(`  ${kleur.cyan("us auth codex")}                # ChatGPT Plus/Pro/Team OAuth (shared across all profiles)`);
+  console.log(`  ${kleur.cyan("us auth claude")}               # Claude Pro/Max OAuth (shared)`);
+  console.log(`  ${kleur.cyan(`us auth status ${name}`)}        # see merged view (global + profile overrides)`);
+  console.log(kleur.dim(`  ${`us auth codex ${name}`.padEnd(34)}# (optional) override credentials just for this profile`));
   console.log("");
 }

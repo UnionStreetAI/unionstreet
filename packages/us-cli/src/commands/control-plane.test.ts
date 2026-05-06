@@ -302,8 +302,8 @@ describe("CLI control-plane commands", () => {
       const raw = await readFile(sessionFile, "utf8");
       const rows = raw.trim().split("\n").map((line) => JSON.parse(line));
 
-      expect(initCode, `us-dev init coo should exit successfully; stdout=${initStdout} stderr=${initStderr}`).toBe(0);
-      expect(code, `us-dev coo -p should exit successfully; stdout=${stdout} stderr=${stderr}`).toBe(0);
+      expect(initCode, `us init coo should exit successfully; stdout=${initStdout} stderr=${initStderr}`).toBe(0);
+      expect(code, `us coo -p should exit successfully; stdout=${stdout} stderr=${stderr}`).toBe(0);
       expect(stdout, "The non-interactive prompt should print the final assistant response to stdout.").toContain("stub response");
       expect(stderr, "Tool execution should be visible on stderr without corrupting stdout transcript text.").toContain("[tool:ls]");
       expect(sessionFile, "The CLI -p path must create a durable session file containing the prompt.").toContain("/profiles/coo/sessions/");

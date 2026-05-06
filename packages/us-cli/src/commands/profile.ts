@@ -1,7 +1,7 @@
 /**
- * `us-dev profile ...` — profile management.
- *   us-dev profile list
- *   us-dev profile use <name>
+ * `us profile ...` — profile management.
+ *   us profile list
+ *   us profile use <name>
  */
 import {
   listProfiles,
@@ -16,7 +16,7 @@ export async function profileList(): Promise<void> {
   const names = await listProfiles();
   console.log("");
   if (!names.length) {
-    console.log(kleur.dim("  (no profiles. Run `us-dev init <name>` to create one.)"));
+    console.log(kleur.dim("  (no profiles. Run `us init <name>` to create one.)"));
     console.log("");
     return;
   }
@@ -26,14 +26,14 @@ export async function profileList(): Promise<void> {
   }
   console.log("");
   if (!cfg.default_profile) {
-    console.log(kleur.dim(`  no default set. \`us-dev profile use <name>\` to pin one.`));
+    console.log(kleur.dim(`  no default set. \`us profile use <name>\` to pin one.`));
     console.log("");
   }
 }
 
 export async function profileUse(name: string): Promise<void> {
   if (!(await profileExists(name))) {
-    throw new Error(`Profile "${name}" does not exist. Run \`us-dev init ${name}\` first.`);
+    throw new Error(`Profile "${name}" does not exist. Run \`us init ${name}\` first.`);
   }
   await setDefaultProfile(name);
   console.log(kleur.green(`\n  ✓ default profile is now "${name}"\n`));

@@ -39,7 +39,7 @@ export async function fleetCommand(action: string | undefined, arg: string | und
 
 async function fleetPlan(profileArg: string | undefined, options: FleetCommandOptions): Promise<void> {
   const prompt = typeof options.prompt === "string" ? options.prompt.trim() : "";
-  if (!prompt) throw new Error("`us-dev fleet plan <agent> -p <prompt>` requires a prompt.");
+  if (!prompt) throw new Error("`us fleet plan <agent> -p <prompt>` requires a prompt.");
   const resolved = await resolveProfile(profileArg);
   const result = await runAgentPrompt({
     profile: resolved.name,
@@ -70,7 +70,7 @@ async function fleetPlan(profileArg: string | undefined, options: FleetCommandOp
 }
 
 async function fleetValidate(path: string | undefined, options: FleetCommandOptions): Promise<void> {
-  if (!path) throw new Error("`us-dev fleet validate <file>` requires a fleet plan path.");
+  if (!path) throw new Error("`us fleet validate <file>` requires a fleet plan path.");
   const plan = await readFleetPlanFile(path);
   const validation = await validateFleetPlan(plan, { allowExisting: options.replace === true });
   if (options.json) {
@@ -82,7 +82,7 @@ async function fleetValidate(path: string | undefined, options: FleetCommandOpti
 }
 
 async function fleetApply(path: string | undefined, options: FleetCommandOptions): Promise<void> {
-  if (!path) throw new Error("`us-dev fleet apply <file>` requires a fleet plan path.");
+  if (!path) throw new Error("`us fleet apply <file>` requires a fleet plan path.");
   const plan = await readFleetPlanFile(path);
   const result = await applyFleetPlan(plan, { overwrite: options.replace === true, dryRun: options.dryRun === true });
   if (options.json) {

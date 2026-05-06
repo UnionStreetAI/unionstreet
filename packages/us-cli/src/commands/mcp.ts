@@ -109,7 +109,7 @@ async function mcpStatus(profile: string | undefined, serverFilter: string | und
 
 async function mcpAuth(profile: string | undefined, server: string | undefined, options: McpCommandOptions): Promise<void> {
   if (!profile) {
-    throw new Error("MCP auth is agent-scoped. Use `us-dev <agent> mcp auth <server>` or `us-dev mcp auth <server> --profile <agent>`.");
+    throw new Error("MCP auth is agent-scoped. Use `us <agent> mcp auth <server>` or `us mcp auth <server> --profile <agent>`.");
   }
   await assertProfile(profile);
   const name = normalizeMcpServerName(server ?? "");
@@ -177,7 +177,7 @@ async function mcpOAuth(profile: string, server: string, options: McpCommandOpti
 
 async function mcpLogout(profile: string | undefined, server: string | undefined): Promise<void> {
   if (!profile) {
-    throw new Error("MCP logout is agent-scoped. Use `us-dev <agent> mcp logout <server>` or `us-dev mcp logout <server> --profile <agent>`.");
+    throw new Error("MCP logout is agent-scoped. Use `us <agent> mcp logout <server>` or `us mcp logout <server> --profile <agent>`.");
   }
   await assertProfile(profile);
   const name = normalizeMcpServerName(server ?? "");
@@ -199,7 +199,7 @@ async function askSecret(message: string): Promise<string> {
 
 async function assertProfile(profile: string): Promise<void> {
   if (!(await profileExists(profile))) {
-    throw new Error(`Profile "${profile}" does not exist. Run \`us-dev init ${profile}\` first.`);
+    throw new Error(`Profile "${profile}" does not exist. Run \`us init ${profile}\` first.`);
   }
 }
 

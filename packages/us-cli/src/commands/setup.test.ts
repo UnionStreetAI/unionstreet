@@ -38,7 +38,7 @@ describe("setup command", () => {
     const pack = await core.readAgentPack("coo");
 
     expect(ok, "Setup should succeed even before model auth; auth is a next step, not a file-system bootstrap blocker.").toBe(true);
-    expect(cfg.default_profile, "Setup should pin the starter profile as the default so `us-dev chat` has a deterministic target.").toBe("coo");
+    expect(cfg.default_profile, "Setup should pin the starter profile as the default so `us chat` has a deterministic target.").toBe("coo");
     expect(pack.memory.provider, "Setup-created profiles must use Honcho memory because memory peering is core infra.").toBe("honcho");
     expect(pack.runtime.compute, "V1 setup should target local host runtime, leaving Docker/Kubernetes/cloud for v2.").toBe("local");
     expect(output, "Setup should print the auth gap as an explicit next action instead of hiding it.").toContain("model auth");

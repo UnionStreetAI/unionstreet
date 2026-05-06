@@ -1,5 +1,5 @@
 /**
- * `us-dev chat [profile]` — mount the opentui chat app.
+ * `us chat [profile]` — mount the opentui chat app.
  *
  * This file owns environment+IO: profile resolution, auth, system-prompt
  * assembly, session-file paths. Everything visual is in `../ui/App.tsx`.
@@ -108,7 +108,7 @@ export async function chat(profileArg: string | undefined): Promise<void> {
 
   resetTerminalModes();
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error("`us-dev chat` must be run in an interactive terminal.");
+    throw new Error("`us chat` must be run in an interactive terminal.");
   }
 
   let renderer: Awaited<ReturnType<typeof createUsChatRenderer>> | null = null;

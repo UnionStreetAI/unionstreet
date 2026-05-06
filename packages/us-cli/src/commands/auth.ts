@@ -34,7 +34,7 @@ import {
 async function targetPath(profile: string | undefined): Promise<string> {
   if (!profile) return GLOBAL_AUTH_PROFILES_PATH;
   if (!(await profileExists(profile))) {
-    throw new Error(`Profile "${profile}" does not exist. Run \`us-dev init ${profile}\` first.`);
+    throw new Error(`Profile "${profile}" does not exist. Run \`us init ${profile}\` first.`);
   }
   return profilePaths(profile).authProfiles;
 }

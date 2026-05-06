@@ -20,7 +20,7 @@ import { startRuntimeServer } from "@unionstreet/server";
 export async function runtimeStatus(profile?: string): Promise<void> {
   const profiles = profile ? [profile] : await listProfiles();
   if (!profiles.length) {
-    console.log(kleur.dim("no profiles found. run `us-dev init <name>` first."));
+    console.log(kleur.dim("no profiles found. run `us init <name>` first."));
     return;
   }
   for (const name of profiles) {
@@ -42,7 +42,7 @@ export interface RuntimeEnsureOptions {
 export async function runtimeEnsure(profile: string, options: RuntimeEnsureOptions = {}): Promise<void> {
   if (await ensureDockerRuntimeIfRequested(profile, options)) return;
   if (options.provider === "kubernetes" && !options.dryRun) {
-    throw new Error("Kubernetes reconciliation is not implemented yet. Use `us-dev runtime render <profile> --provider kubernetes` or add --dry-run.");
+    throw new Error("Kubernetes reconciliation is not implemented yet. Use `us runtime render <profile> --provider kubernetes` or add --dry-run.");
   }
   if (await renderKubernetesRuntimeIfRequested(profile, options)) return;
   const runtime = await ensureAgentWorkspace(profile);

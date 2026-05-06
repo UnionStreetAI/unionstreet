@@ -160,11 +160,11 @@ function printSummary(steps: SetupStep[]): void {
 function printNextSteps(profile: string, hasAuth: boolean): void {
   console.log(kleur.bold("next"));
   if (!hasAuth) {
-    console.log(`  ${kleur.cyan("us-dev auth codex")}      ${kleur.dim("# or: us-dev auth claude")}`);
+    console.log(`  ${kleur.cyan("us auth codex")}      ${kleur.dim("# or: us auth claude")}`);
   }
-  console.log(`  ${kleur.cyan(`us-dev auth status ${profile}`)}`);
-  console.log(`  ${kleur.cyan(`us-dev runtime status ${profile}`)}`);
-  console.log(`  ${kleur.cyan(`us-dev chat ${profile}`)}`);
+  console.log(`  ${kleur.cyan(`us auth status ${profile}`)}`);
+  console.log(`  ${kleur.cyan(`us runtime status ${profile}`)}`);
+  console.log(`  ${kleur.cyan(`us chat ${profile}`)}`);
   console.log("");
 }
 

@@ -18,14 +18,14 @@ export async function pluginsCommand(action: string | undefined, name: string | 
       await printPluginList(options);
       return;
     case "inspect":
-      if (!name) throw new Error("`us-dev plugins inspect` requires a plugin name.");
+      if (!name) throw new Error("`us plugins inspect` requires a plugin name.");
       await printPluginInspect(name, options);
       return;
     case "doctor":
       await printPluginDoctor(options);
       return;
     case "agent":
-      if (!name) throw new Error("`us-dev plugins agent` requires a profile name.");
+      if (!name) throw new Error("`us plugins agent` requires a profile name.");
       await printAgentPlugins(name, options);
       return;
     default:

@@ -24,7 +24,7 @@ import { resetTerminalModes } from "./terminalModes.ts";
 resetTerminalModes();
 process.once("exit", resetTerminalModes);
 
-const cli = cac("us-dev");
+const cli = cac("us");
 
 cli
   .command("doctor", "Verify local prerequisites and Honcho memory dependencies")
@@ -152,7 +152,7 @@ cli
           break;
         case "use":
           if (!name) {
-            console.error("`us-dev profile use` requires a profile name.");
+            console.error("`us profile use` requires a profile name.");
             process.exit(2);
           }
           await profileUse(name);
@@ -182,7 +182,7 @@ cli
           break;
         case "token":
           if (!arg) {
-            console.error("`us-dev federation token` requires an agent/profile name.");
+            console.error("`us federation token` requires an agent/profile name.");
             process.exit(2);
           }
           await federationToken(arg, {
@@ -198,7 +198,7 @@ cli
           break;
         case "verify":
           if (!arg || !options.token) {
-            console.error("`us-dev federation verify` requires a provider and --token <jwt>.");
+            console.error("`us federation verify` requires a provider and --token <jwt>.");
             process.exit(2);
           }
           await federationVerify(arg, String(options.token));
@@ -321,7 +321,7 @@ cli
   });
 
 cli
-  .command("<profile> mcp <action> [server]", "Agent-scoped MCP auth/status, e.g. `us-dev coo mcp auth linear`")
+  .command("<profile> mcp <action> [server]", "Agent-scoped MCP auth/status, e.g. `us coo mcp auth linear`")
   .option("--api-key <key>", "Save a pasted API key/token for `mcp auth`")
   .option("--access-token <token>", "Save a bearer/OAuth access token for `mcp auth`")
   .option("--refresh-token <token>", "Optional OAuth refresh token")
@@ -347,7 +347,7 @@ cli
   });
 
 cli
-  .command("[profile]", "Run `us-dev [profile] -p <prompt>` or open chat for a profile")
+  .command("[profile]", "Run `us [profile] -p <prompt>` or open chat for a profile")
   .option("-p, --prompt <prompt>", "Run one non-interactive prompt as the selected profile")
   .action(async (profile: string | undefined, options) => {
     try {
@@ -384,7 +384,7 @@ cli
           break;
         case "ensure":
           if (!profile) {
-            console.error("`us-dev runtime ensure` requires a profile.");
+            console.error("`us runtime ensure` requires a profile.");
             process.exit(2);
           }
           await runtimeEnsure(profile, {
@@ -399,7 +399,7 @@ cli
           break;
         case "render":
           if (!profile) {
-            console.error("`us-dev runtime render` requires a profile.");
+            console.error("`us runtime render` requires a profile.");
             process.exit(2);
           }
           await runtimeRender(profile, {
@@ -413,7 +413,7 @@ cli
           break;
         case "destroy":
           if (!profile) {
-            console.error("`us-dev runtime destroy` requires a profile.");
+            console.error("`us runtime destroy` requires a profile.");
             process.exit(2);
           }
           await runtimeDestroy(profile, {
@@ -441,7 +441,7 @@ cli
     try {
       const profile = options.profile;
       if (!profile) {
-        console.error("`us-dev mcp-agent` requires --profile <profile>.");
+        console.error("`us mcp-agent` requires --profile <profile>.");
         process.exit(2);
       }
       await startLashPeerStdioServer(String(profile));
@@ -467,7 +467,7 @@ if (argv[1] === "mcp") {
 async function runAgentMcpArgv(argv: string[]): Promise<void> {
   const [profile, _mcp, action, server, ...rest] = argv;
   if (!profile || !action) {
-    console.error("Usage: us-dev <agent> mcp <status|auth|logout> [server]");
+    console.error("Usage: us <agent> mcp <status|auth|logout> [server]");
     process.exit(2);
   }
   const options = parseOptionArgs(rest);

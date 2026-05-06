@@ -1,5 +1,5 @@
 /**
- * The chat UI for `us-dev chat`.
+ * The chat UI for `us chat`.
  *
  * Brand: Union Street AI — "the void and the laser."
  * Pure black canvas, hairline structure, sharp edges, mono tags as
