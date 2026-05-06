@@ -113,6 +113,7 @@ Union Street is organized around a few explicit contracts:
 
 Read more:
 
+- [Portfolio Positioning](docs/portfolio-positioning.md)
 - [Control Plane And Runtime Contracts](docs/control-plane-runtime.md)
 - [Plugin Architecture](docs/plugin-architecture.md)
 - [Server SDK](docs/server-sdk.md)
