@@ -3,7 +3,24 @@
   "version": "0.0.0",
   "private": false,
   "license": "MIT",
-  "description": "US — minimal multi-agent harness. Recursive delegation, peered memory, autonomous wakeups.",
+  "description": "Local-first multi-agent runtime for explicit agent organizations, Lash delegation, MCP tools, schedules, and memory.",
+  "homepage": "https://github.com/UnionStreetAI/unionstreet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UnionStreetAI/unionstreet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/UnionStreetAI/unionstreet/issues"
+  },
+  "keywords": [
+    "agents",
+    "multi-agent",
+    "mcp",
+    "lash",
+    "runtime",
+    "agent-framework",
+    "typescript"
+  ],
   "type": "module",
   "workspaces": [
     "packages/*",

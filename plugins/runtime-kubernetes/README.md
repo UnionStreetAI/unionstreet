@@ -22,11 +22,11 @@ Kubernetes resource bundle:
 Render manifests with:
 
 ```sh
-us-dev runtime render <profile>
-us-dev runtime render <profile> --namespace union-street --workload Job
-us-dev runtime render <profile> --external-secret prod-agent-secrets
-us-dev runtime ensure <profile> --provider kubernetes --dry-run
-us-dev runtime ensure <profile> --provider kubernetes --dry-run --namespace union-street --workload Job
+bun run us runtime render <profile>
+bun run us runtime render <profile> --namespace union-street --workload Job
+bun run us runtime render <profile> --external-secret prod-agent-secrets
+bun run us runtime ensure <profile> --provider kubernetes --dry-run
+bun run us runtime ensure <profile> --provider kubernetes --dry-run --namespace union-street --workload Job
 ```
 
 The render/dry-run path validates the generated resource bundle before writing

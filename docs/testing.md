@@ -15,7 +15,7 @@ Runs the parallel local regression gate:
 - package typechecks
 - isolated test files
 - prompt/events/scheduler smoke scripts
-- ultimate stub run
+- non-live ultimate orchestration smoke run
 - dashboard build
 - CLI end-to-end smoke
 

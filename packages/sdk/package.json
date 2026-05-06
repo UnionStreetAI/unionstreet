@@ -7,6 +7,22 @@
     "access": "public"
   },
   "description": "Typed client SDK for the Union Street server/runtime API.",
+  "homepage": "https://github.com/UnionStreetAI/unionstreet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UnionStreetAI/unionstreet.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/UnionStreetAI/unionstreet/issues"
+  },
+  "keywords": [
+    "agents",
+    "multi-agent",
+    "sdk",
+    "runtime",
+    "typescript"
+  ],
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

@@ -6,7 +6,23 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "US — minimal multi-agent harness CLI (development build, links as `us-dev`).",
+  "description": "Development CLI for the Union Street local-first multi-agent runtime.",
+  "homepage": "https://github.com/UnionStreetAI/unionstreet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UnionStreetAI/unionstreet.git",
+    "directory": "packages/us-cli"
+  },
+  "bugs": {
+    "url": "https://github.com/UnionStreetAI/unionstreet/issues"
+  },
+  "keywords": [
+    "agents",
+    "multi-agent",
+    "cli",
+    "mcp",
+    "lash"
+  ],
   "type": "module",
   "bin": {
     "us-dev": "./src/index.ts"

@@ -11,9 +11,9 @@ core provider can render a deterministic `docker run` plan, start or reuse an
 agent container, inspect container status, and destroy the container.
 
 ```sh
-us-dev runtime render <profile> --provider docker --image ghcr.io/unionstreet/agent-runtime:latest
-us-dev runtime ensure <profile> --provider docker --image ghcr.io/unionstreet/agent-runtime:latest
-us-dev runtime destroy <profile> --provider docker
+bun run us runtime render <profile> --provider docker --image ghcr.io/unionstreet/agent-runtime:latest
+bun run us runtime ensure <profile> --provider docker --image ghcr.io/unionstreet/agent-runtime:latest
+bun run us runtime destroy <profile> --provider docker
 ```
 
 The image scaffolding lives under `docker/`:

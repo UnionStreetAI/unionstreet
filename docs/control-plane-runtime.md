@@ -28,7 +28,7 @@ Kubernetes, and cloud runtime plugins.
 
 ## MCP
 
-- MCP auth is agent-scoped: `us-dev coo mcp auth linear`.
+- MCP auth is agent-scoped: `bun run us coo mcp auth linear`.
 - API-key and OAuth credentials are stored in the agent's `auth-profiles.json`
   unless explicitly saved globally.
 - Remote/cloud OAuth can be completed by opening the printed URL anywhere and

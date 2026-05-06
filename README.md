@@ -1,28 +1,78 @@
-# Union Street — `us`
+# Union Street
 
-Minimal multi-agent harness. Recursive delegation, peered memory, autonomous wakeups.
+Union Street is a local-first multi-agent runtime for building small, explicit
+agent organizations: profiles, managers, direct reports, schedules, memory,
+MCP tools, and peer-to-peer delegation over [Lash](https://github.com/UnionStreetAI/lash-ts).
 
-> Set up once. Watch the agents go.
+It is not another model wrapper. Union Street is the control plane around the
+work: who an agent is, what it may access, how it delegates, where it runs, what
+it remembers, and how its work is audited.
 
-## Local install
+## Why It Exists
+
+Most agent projects start as a chat loop and slowly accrete operational rules.
+Union Street starts from the other end:
+
+- every agent is a named profile with a role, model chain, manager, direct
+  reports, runtime, toolkit, memory policy, schedules, and pulse settings
+- delegation is an explicit protocol event, not a hidden subroutine
+- memory is local and inspectable first, with Honcho-backed peering for shared
+  context
+- MCP credentials and tools are granted per agent instead of assumed globally
+- runtime contracts describe compute, storage, ingress, and workspace boundaries
+- tests exercise local prompts, events, scheduling, MCP, Lash, auth, and runtime
+  guardrails together
+
+The result is a boringly inspectable harness for agent teams: local enough to
+hack on, structured enough to grow into real operations.
+
+## Current Status
+
+**Pre-alpha.** This repository is ready for source-level evaluation, local
+development, and architecture review. It is not a production runtime.
+
+What works today:
+
+- local profile creation and profile-scoped agent packs
+- interactive chat entrypoints and non-interactive prompt runs
+- model/provider auth status and setup flows
+- MCP status, auth metadata, and private-URL guardrails
+- Lash-shaped peer wake/delegation/result flows
+- scheduler, pulse, events, usage, sessions, and local memory records
+- runtime HTTP API with OpenAPI and a typed SDK
+- local host runtime as the v1 target
+- Docker runtime planning/start/status/destroy mechanics
+- Kubernetes manifest render and dry-run validation
+- plugin manifests, plugin inspection, and repo-local skill bundles
+
+What is intentionally not promised yet:
+
+- production hardening for untrusted agents
+- npm-published Union Street packages
+- Kubernetes apply/reconcile
+- complete cloud runtime providers
+- hands-off onboarding on a fresh machine without model-provider credentials
+
+## Quick Start
+
+Requirements:
+
+- macOS or Linux
+- Bun 1.3+
+- Node 20+
+- Git
+- Postgres 16/17 with pgvector
+- `uv`
+
+Install and verify:
 
 ```sh
-# 1. Bun 1.3+ (macOS or Linux)
 curl -fsSL https://bun.sh/install | bash
-
-# 2. Dependencies
 bun install
-
-# 3. Verify this machine can run local agents with Honcho memory
 bun run doctor
 ```
 
-Node 20+, Git, Postgres, pgvector, and `uv` are required for a ready local v1
-machine. Union Street writes profile-scoped JSONL memory events as a durable
-local log, but Honcho-backed memory peering is part of the core local runtime
-contract.
-
-On macOS, install the Honcho memory dependencies with:
+On macOS, the local memory substrate can be installed with:
 
 ```sh
 brew install postgresql@17 pgvector
@@ -30,19 +80,14 @@ brew services start postgresql@17
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-On Linux, install Bun, Node 20+, Git, a Postgres 16/17 server, the matching
-`pgvector` extension package, and `uv` with your preferred package manager.
-Postgres packaging differs by distro, so `bun run doctor` prints generic Linux
-remediation instead of pretending there is one universal command.
-
-## Quick start
+Create a profile and open the chat UI:
 
 ```sh
 bun run us init coder
 bun run us chat coder
 ```
 
-For a non-interactive local sanity check:
+Run a non-interactive local sanity check:
 
 ```sh
 bun run us federation demo-org --profiles
@@ -50,64 +95,79 @@ bun run us runtime status coo
 bun run check:fast
 ```
 
-## Agent Runtimes
+## Architecture
 
-Every profile has a runtime contract with four parts:
+Union Street is organized around a few explicit contracts:
 
-- `head` coordinates the agent with Honcho/control-plane state.
-- `compute` describes where the agent runs: host, container, pod, VM, function, or sandbox.
-- `storage` describes the agent workspace mount or bucket/volume.
-- `ingress` describes the HTTP/S URL used for MCP, Lash, webhooks, and control callbacks.
+- **Agent packs** define identity, chain of command, model routing, toolkit,
+  memory, runtime, schedules, and pulse behavior.
+- **Federation** gives each agent a principal, manager, direct reports, roles,
+  and groups.
+- **Lash** carries peer delegation and structured results through normal MCP
+  tool calls.
+- **Runtime contracts** describe where an agent runs: head, compute, storage,
+  ingress, and workspace.
+- **Events and usage** are append-only JSONL records with recursive redaction.
+- **Plugins and skills** package capabilities without making them globally
+  available by default.
 
-Local host mode is the v1 target and default. Docker, Kubernetes, cloud, and
-sandbox backends live under `plugins/runtime-*`; those are v2 hardening targets
-and should be treated as provider contracts/scaffolds unless a provider-specific
-test says otherwise.
+Read more:
+
+- [Control Plane And Runtime Contracts](docs/control-plane-runtime.md)
+- [Plugin Architecture](docs/plugin-architecture.md)
+- [Server SDK](docs/server-sdk.md)
+- [Testing Battery](docs/testing.md)
+
+## Runtime Targets
+
+Local host mode is the v1 target and default. Docker is the first mechanical
+runtime provider. Kubernetes can render and validate manifests, but does not
+apply them yet. Cloud and sandbox backends under `plugins/runtime-*` are
+provider contracts and hardening targets unless their README says otherwise.
 
 ```sh
 bun run us runtime status coder
 bun run us runtime ensure coder
+bun run us runtime render coder --provider docker
+bun run us runtime render coder --provider kubernetes --dry-run
 ```
 
-Runtime/API hardening, MCP URL policy, webhook signatures, secrets, scheduler, and accounting contracts are documented in [`docs/control-plane-runtime.md`](docs/control-plane-runtime.md).
+Root `.mcp.json` files are treated as local operator config and are ignored by
+git. Use [.mcp.example.json](.mcp.example.json) as the checked-in demo shape.
 
-Plugin direction and the proposed infra/behavior plugin contract are documented in [`docs/plugin-architecture.md`](docs/plugin-architecture.md).
+## Repository Layout
 
-## Status
+- [packages/server](packages/server) owns agents, federation, Lash, memory,
+  plugins, providers, runtime HTTP, events, usage, scheduler, and OpenAPI.
+- [packages/us-cli](packages/us-cli) is the local `us` entrypoint.
+- [packages/sdk](packages/sdk) is the typed client for the runtime API.
+- [packages/us-dashboard](packages/us-dashboard) is the local dashboard.
+- [plugins](plugins) contains app, workflow, and runtime provider plugins.
+- [skills](skills) contains Union Street operating playbooks for agents.
+- [docs](docs) contains the public contracts and testing notes.
 
-Pre-alpha. This repository is ready for source-level evaluation, local
-development, and architecture review. It is not a production runtime and the
-Union Street packages are not published to npm yet; workspace dependencies are
-intended to resolve inside this repo.
+## Development Gates
 
-Works today:
+For normal changes:
 
-- local profile creation, chat entrypoints, auth status, MCP status, scheduler,
-  federation, prompt-runner, and runtime CLI flows covered by `bun run check:fast`
-- the local runtime contract and loopback-first development path
-- Docker runtime planning and image scaffolding that installs from public npm
-- Kubernetes manifest render and dry-run validation
-- SDK generation from the repo OpenAPI contract
-- Lash peer protocol integration through published `@lashprotocol/lash`
+```sh
+bun install --frozen-lockfile
+bun run check:fast
+bun audit
+```
 
-Scaffold or hardening target:
+For runtime, auth, scheduler, memory, MCP, Lash, or orchestration changes:
 
-- Kubernetes apply/reconcile is not implemented; the current path is render and
-  validate only
-- cloud/runtime provider plugins are provider contracts until their own
-  provider-specific tests say otherwise
-- a fresh machine still needs model-provider onboarding before real agent
-  prompts can run
-- npm publishing for Union Street packages needs a release process that rewrites
-  workspace dependencies to versioned package dependencies
+```sh
+bun run check:full
+```
 
-## Layout
+Live provider tests are opt-in:
 
-- `packages/server` — agents, runs, memory, plugins, providers, runtime HTTP, and control-plane contracts
-- `packages/us-cli` — `us` entrypoint
-- `plugins/*` — channel, storage, and runtime provider plugins
+```sh
+bun run check:live
+```
 
-Root `.mcp.json` files are treated as local operator config; use
-`.mcp.example.json` as the checked-in demo shape.
+## License
 
-Built on [`lash`](https://github.com/UnionStreetAI/lash-ts) for peer-to-peer MCP and [`honcho`](https://honcho.dev) for memory.
+MIT. See [LICENSE](LICENSE).

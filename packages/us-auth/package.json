@@ -7,6 +7,22 @@
     "access": "public"
   },
   "description": "OAuth credential management for US providers (Codex/ChatGPT, Anthropic Claude Pro, GitHub Copilot, Google Gemini CLI, Antigravity).",
+  "homepage": "https://github.com/UnionStreetAI/unionstreet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UnionStreetAI/unionstreet.git",
+    "directory": "packages/us-auth"
+  },
+  "bugs": {
+    "url": "https://github.com/UnionStreetAI/unionstreet/issues"
+  },
+  "keywords": [
+    "oauth",
+    "agents",
+    "model-providers",
+    "codex",
+    "anthropic"
+  ],
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

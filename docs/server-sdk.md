@@ -71,4 +71,7 @@ That file reads Vite/localStorage settings, creates a `UnionStreetClient`, and r
 
 ## Next Hardening Step
 
-The SDK client is hand-written for now. Before public release, use `docs/openapi.json` as the input to a generated SDK/CLI pipeline, then keep this hand-written SDK only if it remains useful as an internal convenience wrapper.
+The SDK client is hand-written for now. The next hardening step is using
+`docs/openapi.json` as the input to a generated SDK/CLI pipeline, then keeping
+this hand-written SDK only if it remains useful as an internal convenience
+wrapper.
