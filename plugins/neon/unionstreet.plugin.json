@@ -1,0 +1,28 @@
+{
+  "schema_version": "v1",
+  "name": "neon",
+  "version": "0.1.0",
+  "description": "Neon Postgres integration plugin for database branches, connection metadata, and migration workflows.",
+  "kind": ["apps", "skills", "tools"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["database-branching", "migration-review"],
+    "apps": ["neon"],
+    "commands": ["neon", "psql"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json",
+    "config": "./config.schema.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["api.neon.tech"],
+    "filesystem": ["workspace"],
+    "secrets": ["neon:token", "neon:database-url"],
+    "subprocess": true
+  }
+}

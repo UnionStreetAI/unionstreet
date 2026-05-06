@@ -1,0 +1,33 @@
+{
+  "schema_version": "v1",
+  "name": "vercel",
+  "version": "0.1.0",
+  "description": "Vercel CLI guidance plugin for project linking, env vars, deployments, logs, domains, and previews.",
+  "kind": ["skills", "apps"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["vercel-cli"],
+    "apps": ["vercel"],
+    "commands": ["vercel login", "vercel link", "vercel env", "vercel pull", "vercel dev", "vercel deploy", "vercel logs", "vercel inspect"]
+  },
+  "auth": {
+    "mode": "bearer_token",
+    "description": "Uses a Vercel token or an authenticated Vercel CLI session.",
+    "secrets": ["vercel:token"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json",
+    "config": "./config.schema.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["api.vercel.com", "vercel.com"],
+    "filesystem": ["workspace"],
+    "secrets": ["vercel:token"],
+    "subprocess": true
+  }
+}

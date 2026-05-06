@@ -6,8 +6,17 @@ Contract outputs: `compute_endpoint`, `storage_mount`, `ingress_url`, `control_u
 
 ## Current implementation
 
-Docker is currently the image/parity layer, not the canonical production
-orchestrator. The image scaffolding lives under `docker/`:
+Docker is the first mechanical runtime provider for Union Street agents. The
+core provider can render a deterministic `docker run` plan, start or reuse an
+agent container, inspect container status, and destroy the container.
+
+```sh
+us-dev runtime render <profile> --provider docker --image ghcr.io/unionstreet/agent-runtime:latest
+us-dev runtime ensure <profile> --provider docker --image ghcr.io/unionstreet/agent-runtime:latest
+us-dev runtime destroy <profile> --provider docker
+```
+
+The image scaffolding lives under `docker/`:
 
 - `Dockerfile.runtime` runs the runtime/head API on `0.0.0.0:8787`
 - `Dockerfile.agent` runs an agent-runtime-compatible API image
@@ -22,5 +31,5 @@ bun run image:dashboard
 bun run image:all
 ```
 
-The current package graph depends on sibling `lash-ts`, so these scripts build
-with the parent `Code` directory as Docker context.
+These scripts build from this repository root; Lash is consumed from the
+published `@lashprotocol/lash` package.

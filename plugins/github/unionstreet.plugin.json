@@ -1,0 +1,35 @@
+{
+  "schema_version": "v1",
+  "name": "github",
+  "version": "0.1.0",
+  "description": "GitHub CLI workflow plugin for PR review, issue triage, release notes, and repository hygiene.",
+  "kind": ["apps", "skills", "tools"],
+  "capabilities": {
+    "runtime": [],
+    "tools": ["pr-summary"],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["github-cli", "pr-review", "issue-triage", "release-notes", "repo-hygiene"],
+    "apps": ["github"],
+    "commands": ["gh auth", "gh pr", "gh issue", "gh release", "gh repo", "gh workflow", "git"]
+  },
+  "auth": {
+    "mode": "cli_session",
+    "description": "Uses an authenticated gh session or GitHub token when repository access is needed.",
+    "scopes": ["repo", "read:org", "workflow"],
+    "secrets": ["github:token"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json",
+    "config": "./config.schema.json",
+    "tools": "./tools"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["api.github.com", "github.com"],
+    "filesystem": ["workspace"],
+    "secrets": ["github:token"],
+    "subprocess": true
+  }
+}

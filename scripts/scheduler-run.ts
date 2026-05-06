@@ -16,24 +16,24 @@ try {
   process.env.US_PEER_CALL_STUB = "1";
   process.env.US_STREAM_MODEL_STUB = "1";
   process.env.US_MEMORY_SYNC = "0";
-  const core = await import("../packages/us-core/src/index.ts");
+  const core = await import("../packages/server/src/index.ts");
 
   const monday0915 = Date.UTC(2026, 3, 27, 9, 15);
   const jobs = await core.listSchedulerJobs();
   const pulseJobs = jobs.filter((job) => job.kind === "pulse");
   const scheduleJobs = jobs.filter((job) => job.kind === "schedule");
-  assert(jobs.length === 40, `expected 40 scheduler jobs, got ${jobs.length}`);
-  assert(pulseJobs.length === 20, `expected 20 pulse jobs, got ${pulseJobs.length}`);
-  assert(scheduleJobs.length === 20, `expected 20 schedule jobs, got ${scheduleJobs.length}`);
+  assert(jobs.length === 80, `expected 80 scheduler jobs, got ${jobs.length}`);
+  assert(pulseJobs.length === 40, `expected 40 pulse jobs, got ${pulseJobs.length}`);
+  assert(scheduleJobs.length === 40, `expected 40 schedule jobs, got ${scheduleJobs.length}`);
   assert(pulseJobs.every((job) => job.cadence === "every 30m"), "all pulse jobs should use fixed 30m cadence");
 
   const due = await core.dueSchedulerJobs(monday0915);
-  assert(due.length === 40, `expected 40 jobs due on first scan, got ${due.length}`);
+  assert(due.length === 80, `expected 80 jobs due on first scan, got ${due.length}`);
   assert(due.some((job) => job.id === "pulse:coo"), "coo pulse should be due");
   assert(due.some((job) => job.id === "schedule:coo:weekly-status"), "coo weekly schedule should be due");
 
   const claimed = await core.claimDueSchedulerJobs(monday0915);
-  assert(claimed.length === 40, `expected 40 claimed jobs, got ${claimed.length}`);
+  assert(claimed.length === 80, `expected 80 claimed jobs, got ${claimed.length}`);
   const claimedAgain = await core.claimDueSchedulerJobs(monday0915);
   assert(claimedAgain.length === 0, "claiming same due window twice should be idempotent");
 

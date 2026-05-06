@@ -1,0 +1,23 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-azure",
+  "version": "0.1.0",
+  "description": "Union Street Azure runtime provider: container/VM compute, Blob/File storage, and gateway ingress.",
+  "kind": ["runtime"],
+  "capabilities": {
+    "runtime": ["terraform"],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": []
+  },
+  "entrypoints": {
+    "terraform": "./terraform"
+  },
+  "permissions": {
+    "network": ["azure-api"],
+    "filesystem": ["workspace"],
+    "secrets": ["runtime:*"],
+    "subprocess": true
+  }
+}

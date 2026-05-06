@@ -1,0 +1,23 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-modal",
+  "version": "0.1.0",
+  "description": "Union Street Modal runtime provider: sandbox/function compute, Modal volumes, and HTTPS function ingress.",
+  "kind": ["runtime"],
+  "capabilities": {
+    "runtime": ["terraform"],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": []
+  },
+  "entrypoints": {
+    "terraform": "./terraform"
+  },
+  "permissions": {
+    "network": ["modal-api"],
+    "filesystem": ["workspace"],
+    "secrets": ["runtime:*"],
+    "subprocess": true
+  }
+}

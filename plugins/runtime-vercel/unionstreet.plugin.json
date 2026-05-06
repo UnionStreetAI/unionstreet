@@ -1,0 +1,27 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-vercel",
+  "version": "0.1.0",
+  "description": "Union Street Vercel Sandbox runtime provider: Firecracker microVM compute, snapshot-backed workspaces, and public HTTPS control ingress.",
+  "kind": ["runtime", "skills"],
+  "capabilities": {
+    "runtime": ["render", "apply", "status", "destroy", "snapshots", "persistent-sandboxes", "terraform"],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["vercel-sandbox-runtime"],
+    "apps": [],
+    "commands": ["vercel", "sandbox"]
+  },
+  "entrypoints": {
+    "terraform": "./terraform",
+    "skills": "./skills"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["vercel-api", "vercel-sandbox"],
+    "filesystem": ["workspace"],
+    "secrets": ["runtime:*", "vercel:oidc-token", "vercel:access-token"],
+    "subprocess": true
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "apps": {
+    "neon": {
+      "name": "Neon",
+      "auth": {
+        "type": "token",
+        "env": "NEON_API_KEY"
+      },
+      "baseUrl": "https://api.neon.tech"
+    }
+  }
+}

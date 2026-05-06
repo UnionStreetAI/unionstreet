@@ -1,0 +1,12 @@
+{
+  "apps": {
+    "gitlab": {
+      "name": "GitLab",
+      "auth": {
+        "type": "token",
+        "env": "GITLAB_TOKEN"
+      },
+      "baseUrl": "https://gitlab.com/api/v4"
+    }
+  }
+}

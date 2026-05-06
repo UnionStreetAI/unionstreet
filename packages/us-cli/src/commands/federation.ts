@@ -15,7 +15,7 @@ import {
   writeAgentPack,
   FEDERATION_PATH,
   FEDERATION_KEYS_PATH,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 
 export async function federationStatus(agent?: string): Promise<void> {
   const cfg = await ensureFederationConfig();

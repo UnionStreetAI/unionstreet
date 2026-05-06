@@ -46,7 +46,7 @@ import {
   type UsToolContext,
   type SessionInfo,
   type UsageSummary,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 import { type ChatMessage, type TokenUsage, type ToolCall } from "@unionstreet/ai-codex";
 import type { ChatRuntime } from "./runtime.ts";
 import { C, ATTR_BOLD, markdownSyntax } from "./theme.ts";
@@ -165,7 +165,7 @@ export function App({
   const lastAuthWarningRef = useRef<string | null>(null);
 
   // Memory store: file-backed for now. Swap to HonchoMemoryStore once
-  // honcho's wired up in us-runtime.
+  // honcho's wired up in server.
   const memoryRef = useRef<MemoryStore>(new FileMemoryStore());
   const contextEngineRef = useRef<ContextEngine>(createContextEngine(DEFAULT_CONTEXT_ENGINE_CONFIG));
   if (contextEngineRef.current.getStatus().sessionId !== runtime.sessionId) {

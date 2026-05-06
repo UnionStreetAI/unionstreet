@@ -11,7 +11,7 @@ process.env.US_MEMORY_SYNC = "0";
 process.env.US_STREAM_MODEL_STUB = "1";
 process.env.US_USAGE_DISABLE_MODELS_DEV_COSTS = "1";
 
-const core = await import("@unionstreet/us-core");
+const core = await import("@unionstreet/server");
 const { init } = await import("./init.ts");
 const { profileList, profileUse } = await import("./profile.ts");
 const { schedulerCommand } = await import("./scheduler.ts");

@@ -357,11 +357,12 @@ export function AgentEditor({ agent, modelGroups, directReports, onClose }: Agen
                   <ShieldCheck size={17} />
                   <div>
                     <h2>Permissions</h2>
-                    <p>MCP grants, runtime placement, and approval posture.</p>
+                    <p>Capability plugins, MCP grants, runtime placement, and approval posture.</p>
                   </div>
                 </div>
                 <div className="permission-grid">
-                  <div><span>MCP grant</span><b>{agent.group === "engineering" ? "github" : agent.group === "executives" ? "github, linear, slack" : "scoped"}</b></div>
+                  <div><span>Plugins</span><b>{agent.group === "engineering" ? "github, linear" : agent.group === "executives" ? "linear, slack" : "scoped"}</b></div>
+                  <div><span>MCP grant</span><b>{agent.group === "engineering" ? "linear" : agent.group === "executives" ? "linear, slack" : "scoped"}</b></div>
                   <div><span>Runtime</span><b>{agent.runtime}</b></div>
                   <div><span>Approval</span><b>{agent.group === "executives" ? "required for finance" : "not required"}</b></div>
                   <div><span>Workspace</span><b>profiles/{agent.id}</b></div>
@@ -377,7 +378,7 @@ export function AgentEditor({ agent, modelGroups, directReports, onClose }: Agen
               ["models", "Models", "fallback chain"],
               ["schedule", "Schedule", "calendar wakeups"],
               ["pulses", "Pulse", "heartbeat loop"],
-              ["permissions", "Permissions", "MCP and runtime"],
+              ["permissions", "Permissions", "plugins and infra"],
             ].map(([id, label, hint]) => (
               <button key={id} className={`editor-side-item ${activeTab === id ? "active" : ""}`} onClick={() => setActiveTab(id as EditorTab)}>
                 <b>{label}</b>

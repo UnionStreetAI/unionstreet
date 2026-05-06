@@ -1,16 +1,21 @@
 import kleur from "kleur";
 import {
+  destroyAgentDockerRuntime,
+  dockerRuntimeStatus,
+  dumpDockerPlan,
   dumpKubernetesManifests,
   ensureAgentWorkspace,
+  ensureAgentDockerRuntime,
   listProfiles,
+  renderAgentDockerPlan,
   renderAgentKubernetesManifests,
   resolveMemorySyncConfig,
   resolveAgentRuntime,
   validateKubernetesManifests,
   type KubernetesAgentWorkloadKind,
   type ResolvedAgentRuntime,
-} from "@unionstreet/us-core";
-import { startRuntimeServer } from "@unionstreet/us-runtime";
+} from "@unionstreet/server";
+import { startRuntimeServer } from "@unionstreet/server";
 
 export async function runtimeStatus(profile?: string): Promise<void> {
   const profiles = profile ? [profile] : await listProfiles();
@@ -29,11 +34,13 @@ export interface RuntimeEnsureOptions {
   dryRun?: boolean;
   namespace?: string;
   image?: string;
+  name?: string;
   workload?: string;
   externalSecret?: string;
 }
 
 export async function runtimeEnsure(profile: string, options: RuntimeEnsureOptions = {}): Promise<void> {
+  if (await ensureDockerRuntimeIfRequested(profile, options)) return;
   if (options.provider === "kubernetes" && !options.dryRun) {
     throw new Error("Kubernetes reconciliation is not implemented yet. Use `us-dev runtime render <profile> --provider kubernetes` or add --dry-run.");
   }
@@ -45,7 +52,38 @@ export async function runtimeEnsure(profile: string, options: RuntimeEnsureOptio
 
 export async function runtimeRender(profile: string, options: RuntimeEnsureOptions = {}): Promise<void> {
   if (!options.provider) options.provider = "kubernetes";
+  if (options.provider === "docker") {
+    const runtime = coerceDockerRuntime(await resolveAgentRuntime(profile), options);
+    process.stdout.write(dumpDockerPlan(renderAgentDockerPlan(runtime, { image: options.image, name: options.name })));
+    return;
+  }
   await renderKubernetesRuntimeIfRequested(profile, { ...options, dryRun: true });
+}
+
+export async function runtimeDestroy(profile: string, options: RuntimeEnsureOptions = {}): Promise<void> {
+  const runtime = coerceDockerRuntime(await resolveAgentRuntime(profile), options);
+  if (runtime.workspace.provider !== "docker" && options.provider !== "docker") {
+    throw new Error("runtime destroy currently supports Docker runtimes only. Use --provider docker to target a Docker runtime.");
+  }
+  const status = await destroyAgentDockerRuntime(runtime, { name: options.name });
+  printDockerStatus(status);
+  console.log(status.exists ? kleur.yellow("docker runtime still exists") : kleur.green("docker runtime destroyed"));
+}
+
+async function ensureDockerRuntimeIfRequested(profile: string, options: RuntimeEnsureOptions): Promise<boolean> {
+  if (options.provider && options.provider !== "docker") return false;
+  const resolved = await resolveAgentRuntime(profile);
+  if (options.provider !== "docker" && resolved.workspace.provider !== "docker") return false;
+  const runtime = coerceDockerRuntime(resolved, options);
+  if (options.dryRun) {
+    process.stdout.write(dumpDockerPlan(renderAgentDockerPlan(runtime, { image: options.image, name: options.name })));
+    return true;
+  }
+  const ensured = await ensureAgentDockerRuntime(runtime, { image: options.image, name: options.name });
+  await printRuntime(runtime);
+  printDockerStatus(ensured.status);
+  console.log(ensured.created ? kleur.green("docker runtime started") : kleur.green("docker runtime already running"));
+  return true;
 }
 
 async function renderKubernetesRuntimeIfRequested(profile: string, options: RuntimeEnsureOptions): Promise<boolean> {
@@ -109,6 +147,46 @@ function coerceKubernetesDryRunRuntime(runtime: ResolvedAgentRuntime): ResolvedA
     },
     workspacePath: "/workspace",
   };
+}
+
+function coerceDockerRuntime(runtime: ResolvedAgentRuntime, options: RuntimeEnsureOptions): ResolvedAgentRuntime {
+  if (runtime.workspace.provider === "docker" && !options.image) return runtime;
+  return {
+    ...runtime,
+    pluginId: "runtime-docker",
+    terraformModule: "plugins/runtime-docker/terraform",
+    compute: {
+      ...runtime.compute,
+      provider: "docker",
+      target: "container",
+      ...(options.image ? { image: options.image } : runtime.compute.image ? { image: runtime.compute.image } : runtime.workspace.image ? { image: runtime.workspace.image } : {}),
+    },
+    storage: {
+      ...runtime.storage,
+      provider: "volume",
+      mountPath: runtime.workspace.provider === "docker" ? runtime.storage.mountPath || "/workspace" : "/workspace",
+      persistent: true,
+    },
+    ingress: {
+      ...runtime.ingress,
+      provider: "local",
+      public: false,
+    },
+    workspace: {
+      ...runtime.workspace,
+      provider: "docker",
+      ...(options.image ? { image: options.image } : runtime.workspace.image ? { image: runtime.workspace.image } : {}),
+      persistent: true,
+    },
+    workspacePath: runtime.workspace.provider === "docker" ? runtime.workspacePath : "/workspace",
+  };
+}
+
+function printDockerStatus(status: Awaited<ReturnType<typeof dockerRuntimeStatus>>): void {
+  console.log(`  container ${kleur.cyan(status.containerName)}  ${status.running ? kleur.green("running") : status.exists ? kleur.yellow("stopped") : kleur.dim("missing")}`);
+  if (status.image) console.log(`  image     ${kleur.dim(status.image)}`);
+  if (status.status) console.log(`  status    ${kleur.dim(status.status)}`);
+  if (status.ports) console.log(`  ports     ${kleur.dim(status.ports)}`);
 }
 
 export async function runtimeServe(options: { port?: string | number; host?: string } = {}): Promise<void> {

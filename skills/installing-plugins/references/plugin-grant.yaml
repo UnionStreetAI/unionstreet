@@ -1,0 +1,24 @@
+# A plugin bundle is installed globally/repo-locally, then granted per agent.
+pluginManifest:
+  path: plugins/github/unionstreet.plugin.json
+  name: github
+  kind: [skills, tools, cli]
+  capabilities:
+    skills: [pr-review, issue-triage, release-notes, repo-hygiene]
+    mcp: []
+    tools: [pr-summary]
+    commands: [gh]
+agentGrant:
+  file: ~/.us/profiles/vp-engineering/agent.yaml
+  toolkit:
+    plugins: [github]
+    mcp: []
+    cli: [delegate, report, read, write, shell]
+verify:
+  - bun run us plugins list
+  - bun run us plugins inspect github
+  - bun run us plugins doctor
+  - bun run us plugins agent vp-engineering
+notes:
+  - Plugin skills are injected only for agents granted the plugin.
+  - Runtime plugins can be present without being production-ready.

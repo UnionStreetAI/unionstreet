@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 
 const repoRoot = process.cwd();
 const cli = join(repoRoot, "packages/us-cli/src/index.ts");
-const packages = ["ai-codex", "us-auth", "us-core", "us-runtime", "us-cli", "us-dashboard"];
+const packages = ["ai-codex", "us-auth", "sdk", "server", "us-cli", "us-dashboard"];
 const args = new Set(process.argv.slice(2));
 const skipTypecheck = args.has("--skip-typecheck");
 const skipTests = args.has("--skip-tests");
@@ -17,7 +17,7 @@ if (!skipTypecheck) {
 }
 
 if (!skipTests) {
-  await run(["bun", "test"]);
+  await run(["bun", "run", "test"]);
 }
 
 const usHome = await mkdtemp(join(tmpdir(), "union-street-smoke-"));
@@ -153,7 +153,7 @@ async function harnessAssertions(usHome: string): Promise<void> {
   console.log("\n$ harness end-to-end assertions");
   process.env.US_HOME = usHome;
   process.env.US_PEER_CALL_STUB = "1";
-  const core = await import("../packages/us-core/src/index.ts");
+  const core = await import("../packages/server/src/index.ts");
   const secretPath = join(usHome, "secrets/local.env");
   const receivedMemoryEvents: unknown[] = [];
   const sinkServer = Bun.serve({
@@ -422,7 +422,7 @@ async function harnessAssertions(usHome: string): Promise<void> {
 }
 
 async function assertDelegation(
-  core: typeof import("../packages/us-core/src/index.ts"),
+  core: typeof import("../packages/server/src/index.ts"),
   from: string,
   to: string,
   allowed: boolean,

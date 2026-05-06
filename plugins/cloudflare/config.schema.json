@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cloudflare CLI Plugin Config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "defaultAccountId": { "type": "string" },
+    "allowProductionDeploy": { "type": "boolean", "default": false }
+  }
+}

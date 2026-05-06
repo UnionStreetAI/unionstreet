@@ -1,0 +1,41 @@
+# Reviewable org graph. Validate before apply:
+# bun run us fleet validate fleet.yaml
+version: 1
+kind: union-street.fleet-plan
+name: local-product-company
+mission: Run a focused local agent organization.
+root: coo
+generatedBy: coo
+agents:
+  - id: coo
+    displayName: COO
+    title: Chief Operating Agent
+    groups: [executives, operations]
+    roles: [executive, operator]
+    soul: Own the operating rhythm, delegate through departments, and escalate blockers.
+    model: { provider: codex, id: gpt-5.4 }
+    plugins: [github]
+    permissions: [manager:read, direct_reports:delegate, memory:read, memory:write]
+    memory: { provider: honcho, peerProfile: coo, sharedNamespaces: [institutional] }
+  - id: vp-engineering
+    displayName: Engineering Lead
+    title: VP Engineering
+    manager: coo
+    groups: [engineering]
+    roles: [vp, engineering]
+    soul: Turn priorities into engineering work and report material findings upward.
+    model: { provider: codex, id: gpt-5.4 }
+    mcp: [linear]
+    plugins: [github]
+    permissions: [direct_reports:delegate, manager:report, memory:read, memory:write]
+  - id: engineering-specialist
+    displayName: Engineering Specialist
+    title: Engineering Specialist
+    manager: vp-engineering
+    groups: [engineering]
+    roles: [ic, engineering]
+    soul: Execute focused engineering tasks and report concise evidence.
+    model: { provider: codex, id: gpt-5.4-mini }
+    mcp: [linear]
+    plugins: [github]
+    permissions: [manager:report, memory:read, memory:write]

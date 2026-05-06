@@ -1,0 +1,33 @@
+{
+  "schema_version": "v1",
+  "name": "stripe",
+  "version": "0.1.0",
+  "description": "Stripe billing integration plugin for subscriptions, invoices, payments, customers, and webhook workflows.",
+  "kind": ["apps", "skills"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["billing-ops"],
+    "apps": ["stripe"],
+    "commands": ["stripe"]
+  },
+  "auth": {
+    "mode": "api_key",
+    "description": "Requires a Stripe API key for account access and a webhook secret for webhook verification.",
+    "secrets": ["stripe:api-key", "stripe:webhook-secret"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json",
+    "config": "./config.schema.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["api.stripe.com"],
+    "filesystem": ["workspace"],
+    "secrets": ["stripe:api-key", "stripe:webhook-secret"],
+    "subprocess": true
+  }
+}

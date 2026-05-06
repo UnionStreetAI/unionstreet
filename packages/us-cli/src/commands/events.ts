@@ -1,5 +1,5 @@
 import kleur from "kleur";
-import { queryEvents, tailEvents, type ControlPlaneEventType, type EventQuery } from "@unionstreet/us-core";
+import { queryEvents, tailEvents, type ControlPlaneEventType, type EventQuery } from "@unionstreet/server";
 
 interface EventsOptions {
   agent?: string;

@@ -1,0 +1,5 @@
+{
+  "name": "azure",
+  "displayName": "Azure",
+  "description": "Azure CLI workflows for subscriptions, resource groups, deployments, app services, container apps, and diagnostics."
+}

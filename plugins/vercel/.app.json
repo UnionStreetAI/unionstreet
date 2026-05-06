@@ -1,0 +1,5 @@
+{
+  "name": "vercel",
+  "displayName": "Vercel",
+  "description": "Vercel CLI workflows for project, env, deployment, preview, log, and domain operations."
+}

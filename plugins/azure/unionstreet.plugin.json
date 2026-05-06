@@ -1,0 +1,33 @@
+{
+  "schema_version": "v1",
+  "name": "azure",
+  "version": "0.1.0",
+  "description": "Azure CLI guidance plugin for subscriptions, resource groups, deployments, logs, app services, container apps, and diagnostics.",
+  "kind": ["skills", "apps"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["azure-cli"],
+    "apps": ["azure"],
+    "commands": ["az login", "az account", "az group", "az deployment", "az webapp", "az containerapp", "az monitor"]
+  },
+  "auth": {
+    "mode": "cli_session",
+    "description": "Uses Azure CLI login state or service principal credentials.",
+    "secrets": ["azure:credentials", "azure:subscription"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json",
+    "config": "./config.schema.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["management.azure.com", "login.microsoftonline.com"],
+    "filesystem": ["workspace"],
+    "secrets": ["azure:credentials", "azure:subscription"],
+    "subprocess": true
+  }
+}

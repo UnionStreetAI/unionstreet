@@ -1,0 +1,21 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-local",
+  "version": "0.1.0",
+  "description": "Union Street local runtime provider: host compute, local storage, and loopback ingress for agent workspaces.",
+  "kind": ["runtime"],
+  "capabilities": {
+    "runtime": ["ensure", "status"],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": []
+  },
+  "entrypoints": {},
+  "permissions": {
+    "network": ["loopback"],
+    "filesystem": ["workspace"],
+    "secrets": ["runtime:*"],
+    "subprocess": false
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-gcp",
+  "version": "0.1.0",
+  "description": "Union Street GCP runtime provider: VM/Cloud Run compute, GCS-backed storage, and load-balanced ingress.",
+  "kind": ["runtime"],
+  "capabilities": {
+    "runtime": ["terraform"],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": []
+  },
+  "entrypoints": {
+    "terraform": "./terraform"
+  },
+  "permissions": {
+    "network": ["gcp-api"],
+    "filesystem": ["workspace"],
+    "secrets": ["runtime:*"],
+    "subprocess": true
+  }
+}

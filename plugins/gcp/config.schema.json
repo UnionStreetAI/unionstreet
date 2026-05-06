@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GCP CLI Plugin Config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "defaultProject": { "type": "string" },
+    "defaultRegion": { "type": "string" },
+    "allowMutations": { "type": "boolean", "default": false }
+  }
+}

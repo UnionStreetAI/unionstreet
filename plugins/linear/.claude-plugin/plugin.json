@@ -1,0 +1,12 @@
+{
+  "name": "linear",
+  "version": "0.1.0",
+  "description": "Linear MCP workflow plugin for issues, projects, cycles, comments, and team planning.",
+  "author": {
+    "name": "Union Street AI"
+  },
+  "commands": [],
+  "agents": [],
+  "skills": ["skills/linear-mcp"],
+  "hooks": []
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { listProfiles, resolveDelegationTargets } from "@unionstreet/us-core";
+import { listProfiles, resolveDelegationTargets } from "@unionstreet/server";
 
 export function useDelegationTargets(profileName: string): {
   allProfiles: string[];

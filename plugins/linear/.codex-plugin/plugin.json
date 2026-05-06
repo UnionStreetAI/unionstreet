@@ -1,0 +1,32 @@
+{
+  "name": "linear",
+  "version": "0.1.0",
+  "description": "Linear MCP workflow plugin for issues, projects, cycles, comments, and team planning.",
+  "author": {
+    "name": "Union Street AI",
+    "url": "https://github.com/UnionStreetAI"
+  },
+  "homepage": "https://github.com/UnionStreetAI/union-street/tree/main/plugins/linear",
+  "repository": "https://github.com/UnionStreetAI/union-street",
+  "license": "MIT",
+  "keywords": ["linear", "mcp", "issues", "projects", "planning"],
+  "skills": "./skills/",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "Linear",
+    "shortDescription": "Manage Linear issues and projects through Linear's official MCP server.",
+    "longDescription": "A Union Street Linear plugin that uses Linear's official remote MCP server as the integration surface. Agents can find, create, and update Linear issues, projects, and comments through scoped MCP access rather than local CLI wrappers.",
+    "developerName": "Union Street AI",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write", "Interactive"],
+    "websiteURL": "https://linear.app",
+    "privacyPolicyURL": "https://linear.app/privacy",
+    "termsOfServiceURL": "https://linear.app/terms",
+    "defaultPrompt": [
+      "Find relevant Linear issues and summarize current project status.",
+      "Create a Linear issue from a validated task brief.",
+      "Update issue comments with concise progress and blockers."
+    ],
+    "brandColor": "#5E6AD2"
+  }
+}

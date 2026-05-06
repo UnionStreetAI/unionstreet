@@ -1,0 +1,25 @@
+# Usage records are operating telemetry even when provider cost is zero.
+usageRecord:
+  type: model.usage
+  actor: vp-engineering
+  trace: trace_123
+  sessionId: vp-engineering-2026-05-02
+  provider: custom-openai-compat
+  model: google/gemma-4-31B-it
+  usage:
+    input: 4200
+    output: 900
+    reasoning: 0
+    cache_read: 0
+    cache_write: 0
+    total: 5100
+  accounting:
+    mode: free
+    costMicros: 0
+report:
+  - total tokens per run
+  - tokens per useful report
+  - tokens by org layer
+  - model/provider/concurrency
+commands:
+  - bun run us events query --type model.usage --limit 200

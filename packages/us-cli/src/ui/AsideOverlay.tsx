@@ -29,7 +29,7 @@ import {
   toolDefinitions,
   toolByName,
   type UsToolContext,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 import { C, ATTR_BOLD, markdownSyntax } from "./theme.ts";
 import { cleanTextareaValue } from "./terminalInput.ts";
 

@@ -103,14 +103,14 @@ const agents: Agent[] = [
 const events: EventRow[] = [
   { time: "00:42:18", actor: "coo", event: "delegate", detail: "Sent runtime deployment review to vp-eng" },
   { time: "00:42:21", actor: "vp-eng", event: "wake", detail: "Resumed Lash thread lash:vp-eng/dir-eng-infra" },
-  { time: "00:42:24", actor: "dir-eng-infra", event: "tool", detail: "mcp/github repos.read allowed by engineering grant" },
+  { time: "00:42:24", actor: "dir-eng-infra", event: "tool", detail: "plugin/github-cli used gh pr checks" },
   { time: "00:42:31", actor: "mgr-eng-platform", event: "blocked", detail: "Environment provider missing ingress_url output" },
   { time: "00:42:39", actor: "vp-eng", event: "report", detail: "Reported blocker upward to coo" },
 ];
 
 const grants = [
-  { group: "executives", servers: "github, linear, slack", tools: "*", approval: "required" },
-  { group: "engineering", servers: "github", tools: "repos.*, pull_requests.*, issues.*", approval: "not required" },
+  { group: "executives", servers: "linear, slack", tools: "*", approval: "required" },
+  { group: "engineering", servers: "linear", tools: "issues.*, projects.*, comments.*", approval: "not required" },
   { group: "operations", servers: "linear, slack", tools: "tickets.*, messages.*", approval: "not required" },
   { group: "finance", servers: "stripe, quickbooks", tools: "*.read, reports.*", approval: "required" },
 ];
@@ -123,13 +123,15 @@ const environments = [
 ];
 
 const plugins = [
-  { name: "runtime-local", category: "Environment", status: "installed", scope: "first-party", detail: "host compute, local storage, loopback ingress" },
-  { name: "runtime-docker", category: "Environment", status: "available", scope: "first-party", detail: "container compute with volume workspace" },
-  { name: "runtime-daytona", category: "Environment", status: "available", scope: "first-party", detail: "cloud sandbox workspace provider" },
-  { name: "openrouter", category: "Models", status: "configured", scope: "provider", detail: "OpenAI-compatible model discovery" },
-  { name: "github", category: "MCP", status: "granted", scope: "federated", detail: "repos, pull requests, issues" },
-  { name: "slack", category: "Channel", status: "granted", scope: "federated", detail: "messages and channel read access" },
-  { name: "honcho", category: "Memory", status: "local", scope: "head node", detail: "memory lifecycle and workspace state" },
+  { name: "github", category: "developer", auth: "CLI session/token", status: "available", scope: "agent/department", detail: "GitHub workflows for PRs, issues, releases, checks" },
+  { name: "gtm", category: "marketing", auth: "none", status: "available", scope: "agent/department", detail: "Marketing skill graph for positioning, CRO, SEO, analytics, launch, pricing, RevOps, and sales enablement" },
+  { name: "linear", category: "productivity", auth: "OAuth", status: "available", scope: "agent/department", detail: "Linear work tracking for issues, projects, and comments" },
+  { name: "stripe", category: "finance", auth: "API key", status: "available", scope: "agent/department", detail: "Stripe billing, subscriptions, invoices, customers, and webhook workflows" },
+  { name: "vercel", category: "developer", auth: "token/CLI session", status: "available", scope: "agent/department", detail: "Vercel project, env, deployment, and log workflows" },
+  { name: "aws", category: "cloud", auth: "CLI session", status: "available", scope: "agent/department", detail: "AWS account-aware cloud operations" },
+  { name: "gcp", category: "cloud", auth: "CLI session", status: "available", scope: "agent/department", detail: "Google Cloud project, logs, Cloud Run, builds, and storage workflows" },
+  { name: "azure", category: "cloud", auth: "CLI session", status: "available", scope: "agent/department", detail: "Azure subscription and resource workflows" },
+  { name: "cloudflare", category: "cloud", auth: "token/CLI session", status: "available", scope: "agent/department", detail: "Cloudflare Workers, Pages, D1, KV, R2, and deployment workflows" },
 ];
 
 const providers = [
@@ -289,7 +291,7 @@ const initialChatTurns: ChatTurn[] = [
     kind: "assistant",
     id: "assistant-runtime-readiness",
     agent: "coo",
-    text: "Environment shape is stable: `head`, `compute`, `storage`, `ingress`, and `workspace` all have a clear contract. The next real edge is replacing dashboard fixtures with `us-runtime` endpoints while preserving Lash trace continuity in browser-originated prompts.",
+    text: "Environment shape is stable: `head`, `compute`, `storage`, `ingress`, and `workspace` all have a clear contract. The next real edge is replacing dashboard fixtures with `server` endpoints while preserving Lash trace continuity in browser-originated prompts.",
     streaming: false,
     ts: Date.now() - 160000,
   },
@@ -453,6 +455,7 @@ interface ProviderRow {
 interface PluginRow {
   name: string;
   category: string;
+  auth: string;
   status: string;
   scope: string;
   detail: string;
@@ -776,7 +779,7 @@ function reportsFromEvents(events: RuntimeEvent[], agents: Agent[]): ReportRow[]
 
 function environmentsFromRuntime(snapshot: RuntimeSnapshot): EnvironmentRow[] {
   return snapshot.runtimes.map((runtime, index) => ({
-    provider: String(runtime.provider ?? runtime.runtime ?? runtime.profile ?? `runtime-${index}`),
+    provider: String(runtime.workspace?.provider ?? runtime.compute?.provider ?? runtime.profile ?? `runtime-${index}`),
     compute: summarizePayload(runtime.compute),
     storage: summarizePayload(runtime.storage),
     ingress: summarizePayload(runtime.ingress),
@@ -812,27 +815,24 @@ function providersFromRuntime(agents: RuntimeAgentSnapshot[], modelGroups: Dashb
 }
 
 function pluginsFromRuntime(snapshot: RuntimeSnapshot): PluginRow[] {
-  const mcpServers = new Map<string, PluginRow>();
+  const rows = new Map<string, PluginRow>(plugins.map((plugin) => [plugin.name, plugin]));
   for (const agent of snapshot.agents) {
     for (const server of agent.mcp?.servers ?? []) {
       const grant = agent.mcp?.grants?.[server.name];
-      mcpServers.set(server.name, {
+      const existing = rows.get(server.name);
+      rows.set(server.name, {
         name: server.name,
-        category: "MCP",
-        status: grant?.allowed ? "granted" : server.credential?.configured ? "configured" : "available",
+        category: existing?.category ?? "MCP",
+        auth: existing?.auth ?? "OAuth",
+        status: grant?.allowed ? "granted" : server.credential?.configured ? "configured" : existing?.status ?? "available",
         scope: `@${agent.profile}`,
-        detail: server.url ?? server.command ?? server.transport ?? "configured server",
+        detail: existing
+          ? `${existing.detail}; configured as ${server.url ?? server.command ?? server.transport ?? "server"}`
+          : server.url ?? server.command ?? server.transport ?? "configured server",
       });
     }
   }
-  const runtimePlugins = snapshot.runtimes.map((runtime, index) => ({
-    name: `runtime-${runtime.provider ?? runtime.profile ?? index}`,
-    category: "Environment",
-    status: runtime.warnings?.length ? "blocked" : "installed",
-    scope: String(runtime.profile ?? "agent"),
-    detail: runtimeLabel(runtime),
-  }));
-  return [...runtimePlugins, ...mcpServers.values()];
+  return [...rows.values()];
 }
 
 function scheduledSyncsFromJobs(jobs: RuntimeSchedulerJob[]) {
@@ -876,8 +876,8 @@ function routeForEvent(event: RuntimeEvent, agents: Agent[]): string {
 
 function runtimeLabel(runtime: RuntimeContract | undefined): string {
   if (!runtime) return "unknown";
-  const provider = runtime.provider ?? runtime.runtime ?? "local";
-  const compute = isRecordValue(runtime.compute) ? String(runtime.compute.kind ?? runtime.compute.provider ?? "host") : "host";
+  const provider = runtime.workspace?.provider ?? runtime.compute?.provider ?? "local";
+  const compute = runtime.compute?.target ?? runtime.compute?.provider ?? "host";
   return `${provider}/${compute}`;
 }
 
@@ -1207,7 +1207,8 @@ function ChatPage({ agents, modelGroups, initialAgentId }: { agents: Agent[]; mo
             <CardContent className="context-list">
               <div><span>Manager</span><b>{selectedAgent.manager ? `@${selectedAgent.manager}` : "none"}</b></div>
               <div><span>Direct reports</span><b>{directReports}</b></div>
-              <div><span>MCP grant</span><b>{selectedAgent.group === "engineering" ? "github" : selectedAgent.group === "executives" ? "github, linear, slack" : "scoped"}</b></div>
+              <div><span>Plugins</span><b>{selectedAgent.group === "engineering" ? "github, linear" : selectedAgent.group === "executives" ? "linear, slack" : "scoped"}</b></div>
+              <div><span>MCP grant</span><b>{selectedAgent.group === "engineering" ? "linear" : selectedAgent.group === "executives" ? "linear, slack" : "scoped"}</b></div>
               <div><span>Lash thread</span><b>{selectedAgent.activeThread ?? "new on send"}</b></div>
             </CardContent>
           </Card>
@@ -1808,13 +1809,15 @@ function ReportsPage({ reports, rawEvents }: { reports: ReportRow[]; rawEvents: 
 
 function PluginsPage({ plugins }: { plugins: PluginRow[] }) {
   const installed = plugins.filter((plugin) => plugin.status === "installed" || plugin.status === "configured" || plugin.status === "granted").length;
+  const authless = plugins.filter((plugin) => plugin.auth === "none").length;
+  const needsAuth = plugins.length - authless;
   return (
     <>
       <div className="page-head">
         <div>
           <p className="eyebrow">Extension surface</p>
           <h1>Plugins</h1>
-          <p className="lede">Local view of first-party providers and federated capability plugins exposed to the head node.</p>
+          <p className="lede">Installable agent capabilities. Auth varies by plugin; runtime providers live under Infrastructure.</p>
         </div>
         <div className="actions">
           <Button variant="secondary"><Plug size={15} />Install local</Button>
@@ -1824,9 +1827,9 @@ function PluginsPage({ plugins }: { plugins: PluginRow[] }) {
 
       <section className="kpi-grid">
         <Kpi label="Plugins" value={String(plugins.length)} delta={`${installed} active`} />
-        <Kpi label="Categories" value="5" delta="environment, mcp, model" />
-        <Kpi label="First-party" value="3" delta="runtime providers" />
-        <Kpi label="Federated" value="2" delta="grant scoped" />
+        <Kpi label="Needs auth" value={String(needsAuth)} delta="OAuth, token, key, or CLI" />
+        <Kpi label="No auth" value={String(authless)} delta="skills-only bundles" />
+        <Kpi label="Runtime providers" value="0" delta="shown under Infra" />
       </section>
 
       <section className="dashboard-grid">
@@ -1834,7 +1837,7 @@ function PluginsPage({ plugins }: { plugins: PluginRow[] }) {
           <CardHeader>
             <div>
               <CardTitle>Plugin registry</CardTitle>
-              <CardDescription>Installed and available modules for models, environments, memory, channels, and MCP.</CardDescription>
+              <CardDescription>Installed and available capability modules for agent behavior and app integration.</CardDescription>
             </div>
             <Plug size={16} />
           </CardHeader>
@@ -1843,7 +1846,7 @@ function PluginsPage({ plugins }: { plugins: PluginRow[] }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Plugin</TableHead>
-                  <TableHead>Category</TableHead>
+                  <TableHead>Auth</TableHead>
                   <TableHead>Scope</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -1852,7 +1855,7 @@ function PluginsPage({ plugins }: { plugins: PluginRow[] }) {
                 {plugins.map((plugin) => (
                   <TableRow key={plugin.name}>
                     <TableCell className="name">{plugin.name}</TableCell>
-                    <TableCell>{plugin.category}</TableCell>
+                    <TableCell>{plugin.auth}</TableCell>
                     <TableCell>{plugin.scope}</TableCell>
                     <TableCell><PluginStatus status={plugin.status} /></TableCell>
                   </TableRow>
@@ -1866,7 +1869,7 @@ function PluginsPage({ plugins }: { plugins: PluginRow[] }) {
           <CardHeader>
             <div>
               <CardTitle>Plugin details</CardTitle>
-              <CardDescription>Provider contracts exposed to the runtime.</CardDescription>
+              <CardDescription>How each capability is exposed to agents.</CardDescription>
             </div>
             <PlugZap size={16} />
           </CardHeader>
@@ -1969,8 +1972,6 @@ function ProvidersPage({ providers }: { providers: ProviderRow[] }) {
 }
 
 function McpPage({ agents, plugins }: { agents: RuntimeAgentSnapshot[]; plugins: PluginRow[] }) {
-  const mcpPlugins = plugins.filter((plugin) => plugin.category === "MCP");
-  const granted = mcpPlugins.filter((plugin) => plugin.status === "granted").length;
   const serverRows = agents.flatMap((agent) =>
     (agent.mcp?.servers ?? []).map((server) => ({
       agent: agent.profile,
@@ -1978,6 +1979,7 @@ function McpPage({ agents, plugins }: { agents: RuntimeAgentSnapshot[]; plugins:
       grant: agent.mcp?.grants?.[server.name],
     })),
   );
+  const granted = serverRows.filter((row) => row.grant?.allowed).length;
 
   return (
     <>

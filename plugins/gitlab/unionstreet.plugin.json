@@ -1,0 +1,28 @@
+{
+  "schema_version": "v1",
+  "name": "gitlab",
+  "version": "0.1.0",
+  "description": "GitLab workflow plugin for merge requests, issues, CI pipelines, releases, and repository hygiene.",
+  "kind": ["apps", "skills", "tools"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["merge-request-review", "pipeline-triage"],
+    "apps": ["gitlab"],
+    "commands": ["glab mr", "glab issue", "glab pipeline", "git"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json",
+    "config": "./config.schema.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["gitlab.com"],
+    "filesystem": ["workspace"],
+    "secrets": ["gitlab:token"],
+    "subprocess": true
+  }
+}

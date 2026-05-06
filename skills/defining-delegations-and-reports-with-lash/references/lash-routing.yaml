@@ -1,0 +1,33 @@
+# Lash routing is derived from hierarchy plus each pack's lash policy.
+chain:
+  root:
+    id: coo
+    lash:
+      thread: lash:coo/coo
+      delegate: descendants
+      report: none
+      structured: preferred
+  manager:
+    id: vp-engineering
+    manager: coo
+    lash:
+      thread: lash:coo/vp-engineering
+      delegate: direct_reports
+      report: manager
+      structured: preferred
+  specialist:
+    id: engineering-specialist
+    manager: vp-engineering
+    lash:
+      thread: lash:vp-engineering/engineering-specialist
+      delegate: none
+      report: manager
+      structured: preferred
+expected:
+  coo_can_delegate_to: [vp-engineering, engineering-specialist]
+  vp_engineering_can_delegate_to: [engineering-specialist]
+  engineering_specialist_reports_to: vp-engineering
+debug:
+  - bun run us federation status coo
+  - bun run us federation status vp-engineering
+  - bun run us events query --trace <trace> --limit 100

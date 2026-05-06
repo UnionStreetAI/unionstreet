@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GTM Plugin Config",
+  "type": "object",
+  "properties": {
+    "productMarketingContextPath": {
+      "type": "string",
+      "default": ".agents/product-marketing-context.md"
+    }
+  },
+  "additionalProperties": false
+}

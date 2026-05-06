@@ -24,7 +24,7 @@ import {
   redactMcpCred,
   type AuthProfilesFile,
   type OAuthCred,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 import {
   loginOpenAICodex,
   loginAnthropic,

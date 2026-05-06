@@ -14,7 +14,6 @@
  *   3. picks a default model + writes config.yaml
  *   4. opens auth flow if creds aren't shared from another peer yet
  *   5. optionally seeds AGENTS.md with delegation conventions
- * Tracked in unionstreet-agent/OPEN-QUESTIONS.md.
  */
 import { useState } from "react";
 import { useKeyboard } from "@opentui/react";

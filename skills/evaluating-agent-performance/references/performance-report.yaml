@@ -1,0 +1,29 @@
+# Minimum performance report for a real fleet run.
+run:
+  name: coo-led-readiness
+  trace: trace_123
+  model: custom-openai-compat/google-gemma
+  runtime: local/host
+  memory: honcho
+  agents_total: 200
+  agents_touched: 9
+  duration_ms: 193287
+flow:
+  layers: { d0: 1, d1: 1, d2: 2, d3: 2, d4: 3 }
+  lash_calls: 24
+  lash_allows: 20
+  tool_calls: 50
+  memory_events: 44
+quality:
+  useful_outputs: true
+  overdelegation: low
+  loops_detected: [mgr-00, ic-000]
+  information_flow: partial
+findings:
+  - COO delegated selectively through engineering.
+  - Some lower agents looped on local investigation.
+  - Memory recorded wakes and reports.
+next:
+  - Improve loop control.
+  - Strengthen report discipline.
+  - Compare same task on frontier model.

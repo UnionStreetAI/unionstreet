@@ -1,0 +1,35 @@
+{
+  "schema_version": "v1",
+  "name": "linear",
+  "version": "0.1.0",
+  "description": "Linear MCP workflow plugin for issues, projects, cycles, comments, and team planning.",
+  "kind": ["mcp", "skills", "apps"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": ["linear"],
+    "skills": ["linear-mcp"],
+    "apps": ["linear"],
+    "commands": []
+  },
+  "auth": {
+    "mode": "oauth",
+    "description": "Linear remote MCP authenticates through OAuth during plugin setup.",
+    "scopes": ["read", "write"],
+    "secrets": ["linear:oauth", "linear:api-key"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "mcp": "./.mcp.json",
+    "apps": "./.app.json",
+    "config": "./config.schema.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["mcp.linear.app", "linear.app", "api.linear.app"],
+    "filesystem": [],
+    "secrets": ["linear:oauth", "linear:api-key"],
+    "subprocess": true
+  }
+}

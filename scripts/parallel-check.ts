@@ -14,14 +14,14 @@ const typecheckOnly = args.has("--typecheck-only");
 const typecheckTasks: Task[] = [
   { name: "typecheck:ai-codex", cmd: ["bun", "run", "typecheck"], cwd: "packages/ai-codex" },
   { name: "typecheck:us-auth", cmd: ["bun", "run", "typecheck"], cwd: "packages/us-auth" },
-  { name: "typecheck:us-core", cmd: ["bun", "run", "typecheck"], cwd: "packages/us-core" },
-  { name: "typecheck:us-runtime", cmd: ["bun", "run", "typecheck"], cwd: "packages/us-runtime" },
+  { name: "typecheck:sdk", cmd: ["bun", "run", "typecheck"], cwd: "packages/sdk" },
+  { name: "typecheck:server", cmd: ["bun", "run", "typecheck"], cwd: "packages/server" },
   { name: "typecheck:us-cli", cmd: ["bun", "run", "typecheck"], cwd: "packages/us-cli" },
   { name: "typecheck:us-dashboard", cmd: ["bun", "run", "typecheck"], cwd: "packages/us-dashboard" },
 ];
 
 const verificationTasks: Task[] = [
-  { name: "bun:test", cmd: ["bun", "test"] },
+  { name: "bun:test", cmd: ["bun", "run", "test"] },
   { name: "smoke:prompt", cmd: ["bun", "run", "test:prompt"] },
   { name: "smoke:events", cmd: ["bun", "run", "test:events"] },
   { name: "smoke:scheduler", cmd: ["bun", "run", "test:scheduler"] },

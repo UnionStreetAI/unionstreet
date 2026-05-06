@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["auto", "oidc", "access_token"],
+          "default": "auto"
+        },
+        "oidcTokenEnv": {
+          "type": "string",
+          "default": "VERCEL_OIDC_TOKEN"
+        },
+        "teamIdEnv": {
+          "type": "string",
+          "default": "VERCEL_TEAM_ID"
+        },
+        "projectIdEnv": {
+          "type": "string",
+          "default": "VERCEL_PROJECT_ID"
+        },
+        "tokenEnv": {
+          "type": "string",
+          "default": "VERCEL_TOKEN"
+        }
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namePrefix": {
+          "type": "string",
+          "default": "us-agent"
+        },
+        "runtime": {
+          "type": "string",
+          "enum": ["node24", "node22", "python3.13"],
+          "default": "node24"
+        },
+        "workingDirectory": {
+          "type": "string",
+          "default": "/vercel/sandbox"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 18000,
+          "default": 300
+        },
+        "persistent": {
+          "type": "boolean",
+          "default": false
+        },
+        "snapshotId": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": ["allow-all", "deny-all", "domain-allowlist"],
+          "default": "allow-all"
+        },
+        "allowedDomains": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      }
+    }
+  }
+}

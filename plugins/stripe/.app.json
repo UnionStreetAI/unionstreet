@@ -1,0 +1,12 @@
+{
+  "apps": {
+    "stripe": {
+      "name": "Stripe",
+      "auth": {
+        "type": "token",
+        "env": "STRIPE_API_KEY"
+      },
+      "baseUrl": "https://api.stripe.com"
+    }
+  }
+}

@@ -1,7 +1,7 @@
 /**
  * `us init <name>` — scaffold a new profile.
  */
-import { initProfile, profileExists } from "@unionstreet/us-core";
+import { initProfile, profileExists } from "@unionstreet/server";
 import kleur from "kleur";
 
 export interface InitArgs {

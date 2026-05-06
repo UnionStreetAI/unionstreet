@@ -1,0 +1,5 @@
+{
+  "name": "cloudflare",
+  "displayName": "Cloudflare",
+  "description": "Wrangler CLI workflows for Workers, Pages, D1, KV, R2, secrets, and deployment diagnostics."
+}

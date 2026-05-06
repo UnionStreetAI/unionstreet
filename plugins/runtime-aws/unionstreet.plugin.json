@@ -1,0 +1,23 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-aws",
+  "version": "0.1.0",
+  "description": "Union Street AWS runtime provider: compute, S3/EFS-backed storage, and ALB/API ingress for agent workspaces.",
+  "kind": ["runtime"],
+  "capabilities": {
+    "runtime": ["terraform"],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": []
+  },
+  "entrypoints": {
+    "terraform": "./terraform"
+  },
+  "permissions": {
+    "network": ["aws-api"],
+    "filesystem": ["workspace"],
+    "secrets": ["runtime:*"],
+    "subprocess": true
+  }
+}

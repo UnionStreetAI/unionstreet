@@ -84,19 +84,35 @@ describe("runtime kubernetes CLI dry-run", () => {
     ]);
   });
 
-  test("rejects unsupported dry-run provider and invalid workload values", async () => {
-    const usHome = await mkdtemp(join(tmpdir(), "us-kube-cli-errors-"));
+  test("renders a Docker runtime plan without touching the Docker daemon", async () => {
+    const usHome = await mkdtemp(join(tmpdir(), "us-docker-cli-render-"));
     await runCli(["init", "vp-eng"], usHome);
 
-    await expect(runCli(["runtime", "ensure", "vp-eng", "--dry-run"], usHome)).rejects.toThrow("--provider kubernetes");
-    await expect(runCli([
+    const output = await runCli([
       "runtime",
       "ensure",
       "vp-eng",
       "--provider",
       "docker",
       "--dry-run",
-    ], usHome)).rejects.toThrow("Unsupported runtime provider");
+      "--image",
+      "ghcr.io/unionstreet/agent-runtime:test",
+      "--name",
+      "vp eng docker",
+    ], usHome);
+
+    expect(output).toContain("# Docker runtime plan for @vp-eng");
+    expect(output).toContain("container: vp-eng-docker");
+    expect(output).toContain("image: ghcr.io/unionstreet/agent-runtime:test");
+    expect(output).toContain("US_RUNTIME_PLUGIN=runtime-docker");
+    expect(output).toContain("docker run -d --name vp-eng-docker");
+  });
+
+  test("rejects unsupported dry-run provider and invalid workload values", async () => {
+    const usHome = await mkdtemp(join(tmpdir(), "us-kube-cli-errors-"));
+    await runCli(["init", "vp-eng"], usHome);
+
+    await expect(runCli(["runtime", "ensure", "vp-eng", "--dry-run"], usHome)).rejects.toThrow("--provider kubernetes");
     await expect(runCli([
       "runtime",
       "ensure",

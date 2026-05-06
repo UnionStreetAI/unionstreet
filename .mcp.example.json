@@ -1,0 +1,40 @@
+{
+  "mcp": {
+    "github": {
+      "type": "remote",
+      "url": "https://mcp.example.com/github",
+      "enabled": true,
+      "oauth": true
+    },
+    "linear": {
+      "type": "remote",
+      "url": "https://mcp.example.com/linear",
+      "enabled": true,
+      "oauth": true
+    },
+    "slack": {
+      "type": "remote",
+      "url": "https://mcp.example.com/slack",
+      "enabled": true,
+      "oauth": true
+    },
+    "hubspot": {
+      "type": "remote",
+      "url": "https://mcp.example.com/hubspot",
+      "enabled": true,
+      "oauth": true
+    },
+    "stripe": {
+      "type": "remote",
+      "url": "https://mcp.example.com/stripe",
+      "enabled": true,
+      "oauth": true
+    },
+    "quickbooks": {
+      "type": "remote",
+      "url": "https://mcp.example.com/quickbooks",
+      "enabled": true,
+      "oauth": true
+    }
+  }
+}

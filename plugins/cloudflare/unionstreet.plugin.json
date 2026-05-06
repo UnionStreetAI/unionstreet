@@ -1,0 +1,33 @@
+{
+  "schema_version": "v1",
+  "name": "cloudflare",
+  "version": "0.1.0",
+  "description": "Cloudflare Wrangler CLI guidance plugin for Workers, Pages, D1, KV, R2, secrets, and deployment diagnostics.",
+  "kind": ["skills", "apps"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["cloudflare-wrangler"],
+    "apps": ["cloudflare"],
+    "commands": ["wrangler login", "wrangler whoami", "wrangler dev", "wrangler deploy", "wrangler pages", "wrangler secret", "wrangler d1", "wrangler kv", "wrangler r2"]
+  },
+  "auth": {
+    "mode": "bearer_token",
+    "description": "Uses a Cloudflare API token or an authenticated Wrangler session.",
+    "secrets": ["cloudflare:api-token", "cloudflare:account-id"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json",
+    "config": "./config.schema.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["api.cloudflare.com", "cloudflare.com", "workers.dev"],
+    "filesystem": ["workspace"],
+    "secrets": ["cloudflare:api-token", "cloudflare:account-id"],
+    "subprocess": true
+  }
+}

@@ -1,0 +1,32 @@
+# Local v1 memory contract. Honcho is core; JSONL remains the durable local log.
+# Verify host substrate with: bun run us doctor
+global:
+  memory:
+    sync:
+      enabled: true
+      provider: honcho
+      baseUrl: http://127.0.0.1:8000
+      strict: false
+      timeoutMs: 1500
+agentPack:
+  memory:
+    provider: honcho
+    peerProfile: vp-engineering
+    sharedNamespaces:
+      - institutional
+      - group:engineering
+runtime:
+  head:
+    provider: local
+    honcho:
+      baseUrl: http://127.0.0.1:8000
+      workspaceId: vp-engineering
+      apiKeyEnv: HONCHO_API_KEY
+events:
+  local:
+    anchors: ~/.us/profiles/vp-engineering/memory/anchors.jsonl
+    sessionEvents: ~/.us/profiles/vp-engineering/memory/events.jsonl
+    failedSync: ~/.us/profiles/vp-engineering/memory/sync-outbox.jsonl
+debug:
+  - bun run us runtime status vp-engineering
+  - bun run us events query --type memory.write --actor vp-engineering --limit 50

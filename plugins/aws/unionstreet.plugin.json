@@ -1,0 +1,33 @@
+{
+  "schema_version": "v1",
+  "name": "aws",
+  "version": "0.1.0",
+  "description": "AWS CLI guidance plugin for account inspection, IAM-aware reads, logs, S3, ECS, Lambda, and deployment diagnostics.",
+  "kind": ["skills", "apps"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["aws-cli"],
+    "apps": ["aws"],
+    "commands": ["aws configure", "aws sts", "aws iam", "aws logs", "aws s3", "aws cloudformation", "aws ecs", "aws lambda"]
+  },
+  "auth": {
+    "mode": "cli_session",
+    "description": "Uses AWS CLI credentials or profile configuration.",
+    "secrets": ["aws:credentials", "aws:profile"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json",
+    "config": "./config.schema.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["amazonaws.com"],
+    "filesystem": ["workspace"],
+    "secrets": ["aws:credentials", "aws:profile"],
+    "subprocess": true
+  }
+}

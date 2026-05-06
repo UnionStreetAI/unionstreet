@@ -13,7 +13,7 @@ import {
   startMcpOAuth,
   type McpOAuthMetadata,
   type McpCredentialStatus,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 
 interface McpCommandOptions {
   profile?: string;

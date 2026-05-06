@@ -17,7 +17,7 @@ try {
   process.env.US_HOME = usHome;
   process.env.US_PEER_CALL_STUB = "1";
   process.env.US_MEMORY_SYNC = "0";
-  const core = await import("../packages/us-core/src/index.ts");
+  const core = await import("../packages/server/src/index.ts");
 
   const secretPath = join(usHome, "secrets/local.env");
   await core.writeGlobalConfig({
@@ -171,7 +171,7 @@ async function cliRun(
 }
 
 async function has(
-  core: typeof import("../packages/us-core/src/index.ts"),
+  core: typeof import("../packages/server/src/index.ts"),
   query: Parameters<typeof core.queryEvents>[0],
 ): Promise<boolean> {
   return (await core.queryEvents({ ...query, limit: 1000 })).length > 0;

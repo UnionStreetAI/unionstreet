@@ -18,7 +18,7 @@ import {
   normalizeProvider,
   resolveDelegationTargets,
   type OAuthCred,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 import { App } from "../ui/App.tsx";
 import { makePersister, type ChatRuntime } from "../ui/runtime.ts";
 import { resetTerminalModes } from "../terminalModes.ts";

@@ -25,7 +25,7 @@ import type { MouseEvent } from "@opentui/core";
 import {
   discoverModelGroups,
   type DiscoveredModelGroup,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 import { C, ATTR_BOLD } from "./theme.ts";
 
 export interface ModelPickerProps {

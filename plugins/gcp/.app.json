@@ -1,0 +1,5 @@
+{
+  "name": "gcp",
+  "displayName": "Google Cloud",
+  "description": "gcloud CLI workflows for project config, logs, Cloud Run, builds, storage, and diagnostics."
+}

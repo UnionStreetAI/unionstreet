@@ -8,7 +8,7 @@ import {
   profileExists,
   readGlobalConfig,
   setDefaultProfile,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 import kleur from "kleur";
 
 export async function profileList(): Promise<void> {

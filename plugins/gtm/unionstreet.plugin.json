@@ -1,0 +1,72 @@
+{
+  "schema_version": "v1",
+  "name": "gtm",
+  "version": "0.1.0",
+  "description": "GTM and marketing skills plugin for product marketing context, CRO, copywriting, SEO, analytics, launch, pricing, RevOps, and sales enablement.",
+  "kind": ["skills", "apps"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": [
+      "ab-test-setup",
+      "ad-creative",
+      "ai-seo",
+      "analytics-tracking",
+      "aso-audit",
+      "churn-prevention",
+      "cold-email",
+      "community-marketing",
+      "competitor-alternatives",
+      "competitor-profiling",
+      "content-strategy",
+      "copy-editing",
+      "copywriting",
+      "customer-research",
+      "directory-submissions",
+      "email-sequence",
+      "form-cro",
+      "free-tool-strategy",
+      "image",
+      "launch-strategy",
+      "lead-magnets",
+      "marketing-ideas",
+      "marketing-psychology",
+      "onboarding-cro",
+      "page-cro",
+      "paid-ads",
+      "paywall-upgrade-cro",
+      "popup-cro",
+      "pricing-strategy",
+      "product-marketing-context",
+      "programmatic-seo",
+      "referral-program",
+      "revops",
+      "sales-enablement",
+      "schema-markup",
+      "seo-audit",
+      "signup-flow-cro",
+      "site-architecture",
+      "social-content",
+      "video"
+    ],
+    "apps": ["gtm"],
+    "commands": []
+  },
+  "auth": {
+    "mode": "none",
+    "description": "No external account is required; this plugin only contributes local marketing skills."
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": [],
+    "filesystem": ["workspace"],
+    "secrets": [],
+    "subprocess": false
+  }
+}

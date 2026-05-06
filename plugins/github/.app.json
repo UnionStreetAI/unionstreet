@@ -1,0 +1,13 @@
+{
+  "apps": {
+    "github": {
+      "name": "GitHub",
+      "auth": {
+        "type": "token",
+        "env": "GITHUB_TOKEN",
+        "scopes": ["repo", "read:org"]
+      },
+      "baseUrl": "https://api.github.com"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "aws",
+  "displayName": "AWS",
+  "description": "AWS CLI workflows for account inspection, logs, storage, compute, and deployment diagnostics."
+}

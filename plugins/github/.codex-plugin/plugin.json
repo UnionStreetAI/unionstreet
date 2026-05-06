@@ -1,0 +1,32 @@
+{
+  "name": "github",
+  "version": "0.1.0",
+  "description": "GitHub CLI workflow plugin for PR review, issue triage, release notes, and repository hygiene.",
+  "author": {
+    "name": "Union Street AI",
+    "url": "https://github.com/UnionStreetAI"
+  },
+  "homepage": "https://github.com/UnionStreetAI/union-street/tree/main/plugins/github",
+  "repository": "https://github.com/UnionStreetAI/union-street",
+  "license": "MIT",
+  "keywords": ["github", "pull-requests", "issues", "gh", "cli", "code-review"],
+  "skills": "./skills/",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "GitHub",
+    "shortDescription": "Review pull requests, triage issues, and draft release notes with GitHub context.",
+    "longDescription": "A Union Street GitHub workflow bundle modeled after open-source Claude Code PR review and git workflow plugins. It uses the GitHub CLI as its primary integration surface so agents can inspect repository state and produce actionable review, triage, and release outputs without relying on GitHub MCP.",
+    "developerName": "Union Street AI",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write", "Interactive"],
+    "websiteURL": "https://github.com/UnionStreetAI/union-street",
+    "privacyPolicyURL": "https://github.com/UnionStreetAI/union-street/blob/main/SECURITY.md",
+    "termsOfServiceURL": "https://github.com/UnionStreetAI/union-street/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Review the current pull request and identify high-confidence issues.",
+      "Triage recent GitHub issues and propose labels, owners, and next actions.",
+      "Draft release notes from merged pull requests since the last tag."
+    ],
+    "brandColor": "#24292F"
+  }
+}

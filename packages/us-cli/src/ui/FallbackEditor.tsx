@@ -20,7 +20,7 @@ import {
   setFallbackChain,
   PROVIDERS,
   type ModelTarget,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 import { C, ATTR_BOLD } from "./theme.ts";
 
 const WIDTH = 76;

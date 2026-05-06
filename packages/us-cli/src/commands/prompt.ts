@@ -1,7 +1,7 @@
 import {
   resolveProfile,
   runAgentPrompt,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 
 export async function prompt(profileArg: string | undefined, text: string): Promise<void> {
   const resolved = await resolveProfile(profileArg);

@@ -3,8 +3,8 @@ terraform {
 }
 
 locals {
-  namespace       = var.namespace
-  service_name    = "us-${var.agent_id}"
-  storage_mount   = var.storage_mount
-  ingress_url     = var.ingress_url
+  namespace     = var.namespace
+  service_name  = "us-${var.agent_id}"
+  storage_mount = var.storage_mount
+  ingress_url   = var.ingress_url
 }

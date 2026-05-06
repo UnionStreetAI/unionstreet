@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Linear Plugin Config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "defaultTeamKey": {
+      "type": "string",
+      "description": "Optional default Linear team key for newly created issues."
+    },
+    "allowWriteActions": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow agents to create/update Linear objects without asking for human confirmation first."
+    }
+  }
+}

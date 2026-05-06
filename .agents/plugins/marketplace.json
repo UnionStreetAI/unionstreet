@@ -1,0 +1,104 @@
+{
+  "name": "union-street-local",
+  "interface": {
+    "displayName": "Union Street Local Plugins"
+  },
+  "plugins": [
+    {
+      "name": "github",
+      "source": {
+        "source": "local",
+        "path": "./plugins/github"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "linear",
+      "source": {
+        "source": "local",
+        "path": "./plugins/linear"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "gtm",
+      "source": {
+        "source": "local",
+        "path": "./plugins/gtm"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "NONE"
+      },
+      "category": "Marketing"
+    },
+    {
+      "name": "vercel",
+      "source": {
+        "source": "local",
+        "path": "./plugins/vercel"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "aws",
+      "source": {
+        "source": "local",
+        "path": "./plugins/aws"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "gcp",
+      "source": {
+        "source": "local",
+        "path": "./plugins/gcp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "azure",
+      "source": {
+        "source": "local",
+        "path": "./plugins/azure"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "cloudflare",
+      "source": {
+        "source": "local",
+        "path": "./plugins/cloudflare"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

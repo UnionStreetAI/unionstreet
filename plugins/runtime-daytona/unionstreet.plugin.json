@@ -1,0 +1,23 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-daytona",
+  "version": "0.1.0",
+  "description": "Union Street Daytona runtime provider: cloud development sandbox compute, persistent workspace storage, and HTTPS ingress.",
+  "kind": ["runtime"],
+  "capabilities": {
+    "runtime": ["terraform"],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": []
+  },
+  "entrypoints": {
+    "terraform": "./terraform"
+  },
+  "permissions": {
+    "network": ["daytona-api"],
+    "filesystem": ["workspace"],
+    "secrets": ["runtime:*"],
+    "subprocess": true
+  }
+}

@@ -21,7 +21,7 @@ try {
   process.env.US_MEMORY_SYNC = "0";
   process.env.US_PEER_CALL_STUB = "1";
   process.env.US_STREAM_MODEL_STUB = "1";
-  const core = await import("../packages/us-core/src/index.ts");
+  const core = await import("../packages/server/src/index.ts");
 
   const basic = await cliRun(["coo", "-p", "hello from prompt smoke"], env, workdir, { stdout: "pipe" });
   assert(
@@ -120,16 +120,16 @@ async function cliRun(
 }
 
 async function newestSession(
-  core: typeof import("../packages/us-core/src/index.ts"),
+  core: typeof import("../packages/server/src/index.ts"),
   profile: string,
-): Promise<import("../packages/us-core/src/index.ts").SessionInfo> {
+): Promise<import("../packages/server/src/index.ts").SessionInfo> {
   const sessions = await core.listSessions(profile);
   assert(sessions.length > 0, `expected at least one session for ${profile}`);
   return sessions[0]!;
 }
 
 async function has(
-  core: typeof import("../packages/us-core/src/index.ts"),
+  core: typeof import("../packages/server/src/index.ts"),
   query: Parameters<typeof core.queryEvents>[0],
 ): Promise<boolean> {
   return (await core.queryEvents({ ...query, limit: 1000 })).length > 0;

@@ -1,0 +1,23 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-kubernetes",
+  "version": "0.1.0",
+  "description": "Union Street Kubernetes runtime provider: pod compute, PVC storage, and ingress-backed control plane callbacks.",
+  "kind": ["runtime"],
+  "capabilities": {
+    "runtime": ["render", "terraform"],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": []
+  },
+  "entrypoints": {
+    "terraform": "./terraform"
+  },
+  "permissions": {
+    "network": ["kubernetes-api"],
+    "filesystem": ["workspace"],
+    "secrets": ["runtime:*"],
+    "subprocess": true
+  }
+}

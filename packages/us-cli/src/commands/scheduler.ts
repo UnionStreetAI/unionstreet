@@ -5,7 +5,7 @@ import {
   executeSchedulerRun,
   listSchedulerJobs,
   readSchedulerRuns,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 
 interface SchedulerOptions {
   profile?: string;

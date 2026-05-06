@@ -1,0 +1,31 @@
+# Outside-the-fleet bootstrap flow for a generic coding agent.
+goal: create and verify a small local Union Street fleet
+preflight:
+  - bun run us setup --check
+  - bun run us plugins doctor
+createPlan:
+  command: >-
+    bun run us onboard create
+    --name local-product-company
+    --mission "Run a focused local agent organization"
+    --department engineering:Engineering
+    --department operations:Operations
+    --plugin github
+    --plugin linear
+    --mcp linear
+    --out fleet.yaml
+review:
+  - bun run us fleet validate fleet.yaml
+  - inspect agent count, groups, plugins, mcp, memory namespaces
+apply:
+  - bun run us fleet apply fleet.yaml --replace
+verify:
+  - bun run us profile list
+  - bun run us federation status coo
+  - bun run us plugins agent vp-engineering
+  - bun run us runtime status coo
+  - bun run check:fast
+rules:
+  - Prefer reviewable YAML before materializing.
+  - Scope plugins/MCP to departments or agents.
+  - Keep v1 runtime local/host.

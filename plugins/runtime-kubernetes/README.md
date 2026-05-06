@@ -6,7 +6,7 @@ Contract outputs: `compute_endpoint`, `storage_mount`, `ingress_url`, `control_u
 
 ## Current implementation
 
-`@unionstreet/us-core` can render a resolved agent runtime contract into a
+`@unionstreet/server` can render a resolved agent runtime contract into a
 Kubernetes resource bundle:
 
 - `Namespace`

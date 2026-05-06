@@ -4,18 +4,21 @@
  */
 import { cac } from "cac";
 import { doctor } from "./commands/doctor.ts";
+import { setup } from "./commands/setup.ts";
+import { onboard } from "./commands/onboard.ts";
 import { init } from "./commands/init.ts";
 import { authCodex, authClaude, authStatus } from "./commands/auth.ts";
 import { profileList, profileUse } from "./commands/profile.ts";
 import { chat } from "./commands/chat.tsx";
 import { prompt } from "./commands/prompt.ts";
 import { federationDemoOrg, federationJwks, federationStatus, federationToken, federationVerify } from "./commands/federation.ts";
-import { runtimeEnsure, runtimeRender, runtimeServe, runtimeStatus } from "./commands/runtime.ts";
+import { runtimeDestroy, runtimeEnsure, runtimeRender, runtimeServe, runtimeStatus } from "./commands/runtime.ts";
 import { agentMcpCommand, mcpCommand } from "./commands/mcp.ts";
 import { eventsCommand } from "./commands/events.ts";
 import { schedulerCommand } from "./commands/scheduler.ts";
 import { fleetCommand } from "./commands/fleet.ts";
-import { startLashPeerStdioServer } from "@unionstreet/us-core";
+import { pluginsCommand } from "./commands/plugins.ts";
+import { startLashPeerStdioServer } from "@unionstreet/server";
 import { resetTerminalModes } from "./terminalModes.ts";
 
 resetTerminalModes();
@@ -24,10 +27,79 @@ process.once("exit", resetTerminalModes);
 const cli = cac("us-dev");
 
 cli
-  .command("doctor", "Verify prerequisites: Postgres, pgvector, uv")
+  .command("doctor", "Verify local prerequisites and Honcho memory dependencies")
   .action(async () => {
     const ok = await doctor();
     process.exit(ok ? 0 : 1);
+  });
+
+cli
+  .command("setup [profile]", "Onboard this Mac/Linux machine and create a ready local agent profile")
+  .option("--role <role>", "Declared role for the starter profile")
+  .option("--capability <cap>", "Declared capability (repeatable)")
+  .option("--check", "Check onboarding readiness without creating files")
+  .option("--skip-doctor", "Skip host prerequisite checks")
+  .option("--skip-plugins", "Skip plugin doctor")
+  .action(async (profile: string | undefined, args) => {
+    try {
+      const ok = await setup({
+        profile,
+        role: args.role,
+        capability: args.capability,
+        check: Boolean(args.check),
+        skipDoctor: Boolean(args.skipDoctor),
+        skipPlugins: Boolean(args.skipPlugins),
+      });
+      process.exit(ok ? 0 : 1);
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+  });
+
+cli
+  .command("onboard [action]", "Create/review/apply an initial agent fleet with departments, plugins, and skills")
+  .option("--name <name>", "Fleet name")
+  .option("--mission <mission>", "Fleet mission")
+  .option("--root <profile>", "Root/head agent profile, defaults to coo")
+  .option("--department <dept>", "Department id or id:Display Name (repeatable or comma-separated)")
+  .option("--plugin <plugin>", "Plugin bundle to grant (repeatable or comma-separated)")
+  .option("--skill <skill>", "Skill/plugin bundle to grant (repeatable or comma-separated)")
+  .option("--mcp <server>", "MCP server to grant (repeatable or comma-separated)")
+  .option("--model-provider <provider>", "Model provider for generated agents")
+  .option("--model <model>", "Model id for generated agents")
+  .option("--out <file>", "Write the fleet plan YAML to a file")
+  .option("--apply", "Apply the generated fleet plan")
+  .option("--replace", "Allow applying over existing generated profiles")
+  .option("--skip-setup", "Skip machine/profile setup before planning")
+  .option("--json", "Print JSON")
+  .action(async (action: string | undefined, args) => {
+    try {
+      if (action && action !== "create") {
+        console.error(`Unknown onboard action "${action}". Try: create`);
+        process.exit(2);
+      }
+      const ok = await onboard({
+        name: args.name,
+        mission: args.mission,
+        root: args.root,
+        department: args.department,
+        plugin: args.plugin,
+        skill: args.skill,
+        mcp: args.mcp,
+        modelProvider: args.modelProvider,
+        model: args.model,
+        out: args.out,
+        apply: Boolean(args.apply),
+        replace: Boolean(args.replace),
+        skipSetup: Boolean(args.skipSetup),
+        json: Boolean(args.json),
+      });
+      process.exit(ok ? 0 : 1);
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
   });
 
 cli
@@ -147,6 +219,18 @@ cli
   .action(async (profile: string | undefined, options) => {
     try {
       await chat(options.profile ?? profile);
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+  });
+
+cli
+  .command("plugins [action] [name]", "Plugins: list | inspect <name> | doctor | agent <profile>")
+  .option("--json", "Print JSON")
+  .action(async (action: string | undefined, name: string | undefined, options) => {
+    try {
+      await pluginsCommand(action, name, { json: Boolean(options.json) });
     } catch (e) {
       console.error((e as Error).message);
       process.exit(1);
@@ -282,11 +366,12 @@ cli
   });
 
 cli
-  .command("runtime <action> [profile]", "Runtime/workspace: status [profile] | ensure <profile> | render <profile> | serve")
+  .command("runtime <action> [profile]", "Runtime/workspace: status [profile] | ensure <profile> | render <profile> | destroy <profile> | serve")
   .option("--port <port>", "Port for `runtime serve`, defaults to 8787")
   .option("--host <host>", "Host for `runtime serve`, defaults to 127.0.0.1")
   .option("--provider <provider>", "Provider override for supported runtime actions, e.g. kubernetes")
   .option("--dry-run", "Print rendered provider resources without creating them")
+  .option("--name <name>", "Provider resource name override, currently used for Docker containers")
   .option("--namespace <namespace>", "Kubernetes namespace for dry-run manifests")
   .option("--image <image>", "Container image for Kubernetes dry-run manifests")
   .option("--workload <kind>", "Kubernetes agent workload kind: Deployment | Job | Pod")
@@ -307,6 +392,7 @@ cli
             dryRun: Boolean(options.dryRun),
             namespace: options.namespace ? String(options.namespace) : undefined,
             image: options.image ? String(options.image) : undefined,
+            name: options.name ? String(options.name) : undefined,
             workload: options.workload ? String(options.workload) : undefined,
             externalSecret: options.externalSecret ? String(options.externalSecret) : undefined,
           });
@@ -320,8 +406,19 @@ cli
             provider: options.provider ? String(options.provider) : undefined,
             namespace: options.namespace ? String(options.namespace) : undefined,
             image: options.image ? String(options.image) : undefined,
+            name: options.name ? String(options.name) : undefined,
             workload: options.workload ? String(options.workload) : undefined,
             externalSecret: options.externalSecret ? String(options.externalSecret) : undefined,
+          });
+          break;
+        case "destroy":
+          if (!profile) {
+            console.error("`us-dev runtime destroy` requires a profile.");
+            process.exit(2);
+          }
+          await runtimeDestroy(profile, {
+            provider: options.provider ? String(options.provider) : undefined,
+            name: options.name ? String(options.name) : undefined,
           });
           break;
         case "serve":

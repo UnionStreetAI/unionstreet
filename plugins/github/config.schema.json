@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "defaultOwner": {
+      "type": "string",
+      "description": "Default GitHub owner or organization."
+    },
+    "defaultRepo": {
+      "type": "string",
+      "description": "Default repository name."
+    },
+    "reviewConfidenceThreshold": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 80
+    },
+    "allowWriteActions": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow skills to suggest or execute write actions such as comments, labels, and PR creation."
+    }
+  }
+}

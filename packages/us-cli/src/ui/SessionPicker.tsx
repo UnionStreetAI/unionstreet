@@ -15,7 +15,7 @@ import {
   sessionAgeLabel,
   shortSessionLabel,
   type SessionInfo,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 import { C, ATTR_BOLD } from "./theme.ts";
 
 export interface SessionPickerProps {

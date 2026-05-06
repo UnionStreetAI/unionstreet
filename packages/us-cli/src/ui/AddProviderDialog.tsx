@@ -2,7 +2,7 @@
  * `Cmd+A` on the model picker → add a provider.
  *
  * Two stages:
- *   1. Pick a provider from the curated catalog (us-core/providers.ts).
+ *   1. Pick a provider from the curated catalog (server/providers.ts).
  *      Western providers only — sorted: popular first, then alphabetical.
  *   2. If api_key: prompt for the key, save to auth-profiles.json.
  *      If oauth: show a note pointing the user at `us-dev auth <subcmd>`
@@ -19,7 +19,7 @@ import {
   updateAuthProfiles,
   type ProviderInfo,
   type OAuthCred,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 import {
   loginOpenAICodex,
   loginAnthropic,

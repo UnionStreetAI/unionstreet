@@ -1,0 +1,20 @@
+# Pulse is a heartbeat. Keep it repeatable and bounded.
+agent: vp-engineering
+pulse:
+  enabled: true
+  cadence: every 30m
+  instructions: >-
+    Inspect engineering priorities, stale work, missing reports, and blockers.
+    Delegate only when a direct report is clearly useful. Report material
+    changes upward and record memory-worthy state.
+goodFor:
+  - situational awareness
+  - stale work detection
+  - periodic manager readouts
+notFor:
+  - one-off tasks
+  - long unbounded investigations
+  - replacing explicit schedules
+verify:
+  - bun run us scheduler status -p vp-engineering
+  - bun run us events query --actor vp-engineering --limit 50

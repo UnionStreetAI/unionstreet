@@ -1,0 +1,19 @@
+# Agent pack schedule entries are explicit recurring jobs, separate from pulse.
+agent: vp-engineering
+schedule:
+  - id: monday-engineering-readout
+    name: Monday Engineering Readout
+    cron: "0 9 * * MON"
+    timezone: America/Los_Angeles
+    prompt: >-
+      Review engineering memory, open reports, and unresolved blockers.
+      Produce a concise readout for the COO with evidence and next actions.
+    deliverables:
+      - status summary
+      - blockers
+      - recommended delegations
+commands:
+  - bun run us scheduler status -p vp-engineering
+  - bun run us scheduler due -p vp-engineering
+  - bun run us scheduler tick -p vp-engineering --execute
+  - bun run us scheduler runs -p vp-engineering

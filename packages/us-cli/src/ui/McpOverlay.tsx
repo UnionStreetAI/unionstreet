@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { inspectMcpStatus, type McpStatus, type McpServerInfo } from "@unionstreet/us-core";
+import { inspectMcpStatus, type McpStatus, type McpServerInfo } from "@unionstreet/server";
 import { C, ATTR_BOLD } from "./theme.ts";
 import { compactPath } from "./env.ts";
 

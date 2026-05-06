@@ -11,7 +11,7 @@ import {
   writeEvent,
   writeFleetPlanFile,
   type FleetPlan,
-} from "@unionstreet/us-core";
+} from "@unionstreet/server";
 
 export interface FleetCommandOptions {
   prompt?: string;
@@ -118,6 +118,7 @@ function printValidation(plan: FleetPlan, validation: Awaited<ReturnType<typeof 
   console.log(`  agents ${kleur.cyan(String(validation.summary.agents))}`);
   console.log(`  groups ${kleur.dim(validation.summary.groups.join(", ") || "none")}`);
   console.log(`  mcp    ${kleur.dim(validation.summary.mcpServers.join(", ") || "none")}`);
+  console.log(`  plugins ${kleur.dim(validation.summary.plugins.join(", ") || "none")}`);
   for (const warning of validation.warnings) console.log(`  ${kleur.yellow("warn")}  ${warning}`);
   for (const error of validation.errors) console.log(`  ${kleur.red("error")} ${error}`);
   console.log(validation.ok ? kleur.green("  validation ok") : kleur.red("  validation failed"));

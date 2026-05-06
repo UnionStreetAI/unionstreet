@@ -1,0 +1,25 @@
+# MCP access should flow through fleet plan, federation grant, then profile auth.
+fleetPlanAgent:
+  id: vp-engineering
+  mcp: [linear]
+  plugins: [linear]
+federationGrant:
+  id: fleet:local-product-company:vp-engineering:mcp
+  resource: mcp
+  agents: [vp-engineering]
+  servers: [linear]
+  tools: ["*"]
+  requireApproval: true
+authProfile:
+  path: ~/.us/profiles/vp-engineering/auth-profiles.json
+  mcp:
+    linear:
+      kind: api-key
+      provider: linear
+      header: Authorization
+      valueEnv: LINEAR_API_KEY
+commands:
+  - bun run us fleet apply fleet.yaml --replace
+  - bun run us mcp auth linear -p vp-engineering --api-key "$LINEAR_API_KEY"
+  - bun run us mcp status -p vp-engineering
+  - bun run us plugins agent vp-engineering

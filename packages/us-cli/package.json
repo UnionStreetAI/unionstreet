@@ -1,7 +1,11 @@
 {
   "name": "@unionstreet/us-dev",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "US — minimal multi-agent harness CLI (development build, links as `us-dev`).",
   "type": "module",
   "bin": {
@@ -13,12 +17,11 @@
     "start": "bun run src/index.ts"
   },
   "dependencies": {
-    "@unionstreet/us-core": "workspace:*",
-    "@unionstreet/us-runtime": "workspace:*",
+    "@unionstreet/server": "workspace:*",
     "@unionstreet/us-auth": "workspace:*",
     "@unionstreet/ai-codex": "workspace:*",
-    "@opentui/core": "^0.1.104",
-    "@opentui/react": "^0.1.104",
+    "@opentui/core": "^0.2.1",
+    "@opentui/react": "^0.2.1",
     "react": "^19.0.0",
     "cac": "^6.7.14",
     "kleur": "^4.1.5",

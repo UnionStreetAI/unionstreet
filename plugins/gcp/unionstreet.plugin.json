@@ -1,0 +1,33 @@
+{
+  "schema_version": "v1",
+  "name": "gcp",
+  "version": "0.1.0",
+  "description": "Google Cloud CLI guidance plugin for project config, auth, logs, Cloud Run, builds, storage, and deployment diagnostics.",
+  "kind": ["skills", "apps"],
+  "capabilities": {
+    "runtime": [],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": ["gcp-cli"],
+    "apps": ["gcp"],
+    "commands": ["gcloud auth", "gcloud config", "gcloud projects", "gcloud logging", "gcloud run", "gcloud builds", "gcloud storage"]
+  },
+  "auth": {
+    "mode": "cli_session",
+    "description": "Uses gcloud application/user credentials and selected project configuration.",
+    "secrets": ["gcp:credentials", "gcp:project"]
+  },
+  "entrypoints": {
+    "skills": "./skills",
+    "apps": "./.app.json",
+    "config": "./config.schema.json"
+  },
+  "config_schema": "./config.schema.json",
+  "permissions": {
+    "network": ["googleapis.com", "cloud.google.com"],
+    "filesystem": ["workspace"],
+    "secrets": ["gcp:credentials", "gcp:project"],
+    "subprocess": true
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": "v1",
+  "name": "runtime-render",
+  "version": "0.1.0",
+  "description": "Union Street Render runtime provider: service/worker compute, persistent disk, and HTTPS ingress.",
+  "kind": ["runtime"],
+  "capabilities": {
+    "runtime": ["terraform"],
+    "tools": [],
+    "hooks": [],
+    "mcp": [],
+    "skills": [],
+    "apps": [],
+    "commands": []
+  },
+  "entrypoints": {
+    "terraform": "./terraform"
+  },
+  "permissions": {
+    "network": ["render-api"],
+    "filesystem": ["workspace"],
+    "secrets": ["runtime:*"],
+    "subprocess": true
+  }
+}

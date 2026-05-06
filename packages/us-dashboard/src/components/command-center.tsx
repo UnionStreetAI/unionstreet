@@ -15,6 +15,17 @@ type HeadDrawerTurn =
   | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; text: string; result: RuntimePromptResult };
 
+const DEPARTMENT_OPTIONS = ["operations", "go-to-market", "finance", "engineering", "product", "support"];
+const PLUGIN_OPTIONS = ["gtm", "github", "linear", "stripe", "vercel", "aws", "gcp", "azure", "cloudflare"];
+const DEPARTMENT_TIPS: Record<string, string> = {
+  operations: "Operations owns cadence, blockers, runbooks, incidents, releases, owners, dates, and operational handoffs.",
+  "go-to-market": "GTM owns launches, account research, pipeline blockers, customer proof, messaging gaps, and revenue-facing handoffs.",
+  finance: "Finance owns billing readiness, forecast hygiene, spend approvals, revenue evidence, and financial risk reporting.",
+  engineering: "Engineering owns implementation, architecture, code review, tests, release risk, incidents, and technical verification.",
+  product: "Product owns customer problems, roadmap shape, acceptance criteria, prioritization, and product/engineering translation.",
+  support: "Support owns customer issue triage, escalation quality, known-issue summaries, docs gaps, and feedback loops.",
+};
+
 export interface CommandCenterEventRow {
   time: string;
   actor: string;
@@ -412,6 +423,8 @@ function PromptMetadata({ result }: { result: RuntimePromptResult }) {
 
 function FleetDesignerModal({ agent, onApplied, onClose }: { agent: Agent; onApplied(): Promise<void>; onClose(): void }) {
   const [prompt, setPrompt] = useState("Build the company you want to run for Union Street. Keep it lean, practical, and policy-aware.");
+  const [departments, setDepartments] = useState(["operations", "go-to-market", "finance", "engineering"]);
+  const [selectedPlugins, setSelectedPlugins] = useState(["gtm", "github", "linear"]);
   const [plan, setPlan] = useState<RuntimeFleetPlan | undefined>(undefined);
   const [validation, setValidation] = useState<RuntimeFleetValidation | undefined>(undefined);
   const [status, setStatus] = useState<"idle" | "planning" | "applying" | "applied">("idle");
@@ -424,7 +437,10 @@ function FleetDesignerModal({ agent, onApplied, onClose }: { agent: Agent; onApp
     setPlan(undefined);
     setValidation(undefined);
     try {
-      const response = await planFleet({ profile: agent.id, prompt });
+      const response = await planFleet({
+        profile: agent.id,
+        prompt: buildFleetDesignerPrompt(prompt, departments, selectedPlugins),
+      });
       setPlan(response.plan);
       setValidation(response.validation);
       setStatus("idle");
@@ -464,6 +480,26 @@ function FleetDesignerModal({ agent, onApplied, onClose }: { agent: Agent; onApp
 
         <div className="fleet-designer-grid">
           <div className="fleet-designer-compose">
+            <div className="fleet-designer-options">
+              <OptionGroup
+                title="Departments"
+                description="Initial org shape for the head agent to draft."
+                options={DEPARTMENT_OPTIONS}
+                selected={departments}
+                onToggle={(value) => setDepartments(toggleSelection(departments, value))}
+              />
+              <OptionGroup
+                title="Plugins"
+                description="Agent capability bundles. Auth and tool surfaces are handled by the plugin."
+                options={PLUGIN_OPTIONS}
+                selected={selectedPlugins}
+                onToggle={(value) => setSelectedPlugins(toggleSelection(selectedPlugins, value))}
+              />
+              <div className="fleet-designer-infra-note">
+                <Terminal size={15} />
+                <span>Runtime placement stays infrastructure: local host for v1, Docker/Kubernetes/cloud sandboxes later.</span>
+              </div>
+            </div>
             <label className="field">
               <span>Prompt</span>
               <textarea
@@ -491,6 +527,7 @@ function FleetDesignerModal({ agent, onApplied, onClose }: { agent: Agent; onApp
               <div className={validation.ok ? "fleet-validation ok" : "fleet-validation fail"}>
                 <b>{validation.ok ? "valid" : "blocked"}</b>
                 <span>{validation.summary.agents} agents · root @{validation.summary.root || "none"}</span>
+                <span>{validation.summary.groups.length} groups · {validation.summary.mcpServers.length} MCP servers</span>
                 {validation.errors.map((item) => <p key={`error-${item}`}>{item}</p>)}
                 {validation.warnings.map((item) => <p key={`warning-${item}`}>{item}</p>)}
               </div>
@@ -517,6 +554,64 @@ function FleetDesignerModal({ agent, onApplied, onClose }: { agent: Agent; onApp
       </section>
     </div>
   );
+}
+
+function OptionGroup({
+  title,
+  description,
+  options,
+  selected,
+  onToggle,
+}: {
+  title: string;
+  description: string;
+  options: string[];
+  selected: string[];
+  onToggle(value: string): void;
+}) {
+  return (
+    <div className="fleet-option-group">
+      <div>
+        <b>{title}</b>
+        <span>{description}</span>
+      </div>
+      <div className="fleet-option-grid">
+        {options.map((option) => (
+          <label className="fleet-option" key={option}>
+            <input type="checkbox" checked={selected.includes(option)} onChange={() => onToggle(option)} />
+            <span>{option}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function toggleSelection(values: string[], value: string): string[] {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
+
+function buildFleetDesignerPrompt(prompt: string, departments: string[], plugins: string[]): string {
+  const selectedDepartments = departments.length ? departments : ["engineering"];
+  const selectedPlugins = plugins.length ? plugins : ["none"];
+  const departmentTips = selectedDepartments
+    .map((department) => `- ${department}: ${DEPARTMENT_TIPS[department] ?? "Own clear delegated work, evidence, memory, and upward reporting."}`)
+    .join("\n");
+  return [
+    prompt.trim(),
+    "",
+    "Dashboard onboarding constraints:",
+    `- Departments to include: ${selectedDepartments.join(", ")}.`,
+    `- Selected plugins: ${selectedPlugins.join(", ")}.`,
+    "- From the user's point of view, a plugin is a plugin. Do not expose CLI vs MCP vs skills as separate choices.",
+    "- Internally map selected plugins to fleet-plan fields: skill/CLI/app plugins go in plugins; MCP-backed plugins go in mcp.",
+    "- Current plugin auth hints: gtm=none, github=local CLI session or token, linear=OAuth MCP, stripe=API key, cloud CLIs=CLI session or bearer token.",
+    "- Do not model runtime providers, sandboxes, Docker, Kubernetes, Vercel Sandbox, Daytona, Modal, or cloud placement as plugins.",
+    "- Runtime placement is infrastructure and remains local/host for this v1 onboarding plan.",
+    "",
+    "Department operating defaults:",
+    departmentTips,
+  ].join("\n");
 }
 
 function CommandTimeline({ events }: { events: CommandCenterEventRow[] }) {

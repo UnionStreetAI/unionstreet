@@ -1,0 +1,46 @@
+# Compact local v1 agent pack. Copy shape, then adjust ids and grants.
+version: 1
+id: vp-engineering
+soul: ./SOUL.md
+model:
+  primary: { provider: codex, id: gpt-5.4 }
+  fallback:
+    - { provider: codex, id: gpt-5.4-mini }
+identity:
+  profile: vp-engineering
+  subject: agent:vp-engineering
+  displayName: Engineering Lead
+  title: VP Engineering
+  manager: coo
+  directReports: [platform-manager]
+  groups: [engineering]
+  roles: [vp, engineering]
+oidc:
+  issuer: urn:union-street:local
+  subject: agent:vp-engineering
+  audiences: [urn:union-street:agents]
+lash:
+  thread: lash:coo/vp-engineering
+  delegate: direct_reports
+  report: manager
+  structured: preferred
+pulse:
+  enabled: true
+  cadence: every 30m
+  instructions: Review engineering priorities, delegate selectively, and report material changes upward.
+schedule: []
+runtime:
+  environment: local/host
+  compute: local
+  storage: local
+  workspace: .
+  secrets: [profile:vp-engineering]
+toolkit:
+  cli: [delegate, report, read, write, shell]
+  mcp: [linear]
+  plugins: [github]
+  permissions: [direct_reports:delegate, manager:report, memory:read, memory:write]
+memory:
+  provider: honcho
+  peerProfile: vp-engineering
+  sharedNamespaces: [institutional, group:engineering]
