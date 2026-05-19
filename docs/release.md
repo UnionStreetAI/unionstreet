@@ -69,11 +69,13 @@ Repo → **Settings** → **Environments** → create **`release`** (optional re
 
 ## Day-to-day flow
 
+**Trusted publishing** replaces an `NPM_TOKEN` — it does not mean “every merge to `main` ships npm.” **Changesets** decides *when* to bump and publish.
+
 1. Contributor runs `bun run changeset` (targets `@unionstreet/us` only).
-2. Merge to `main` → `release.yml` opens **chore(release): version packages**.
-3. Merge version PR → `bun run release` runs `check:full`, then `changeset publish`:
-   - `prepack` in `packages/npm` runs `scripts/stage-npm-package.ts`
-   - `npm publish` ships one tarball via OIDC
+2. Merge feature PR to `main` → `release.yml` opens **chore(release): version packages** (version + changelog only).
+3. Merge that version PR → `release.yml` runs `changeset publish` (OIDC + provenance). `ci.yml` already ran `check:full` on the commit.
+
+If `main` has a version bump and no pending changesets (e.g. maintainer versioned locally), the same workflow attempts publish on push — still via OIDC, not your laptop token. `prepack` stages sources; `npm publish` ships the tarball with provenance.
 
 ## Local commands
 
@@ -81,7 +83,7 @@ Repo → **Settings** → **Environments** → create **`release`** (optional re
 bun run changeset
 bun run version-packages
 bun run pack:verify          # stage + npm pack --dry-run
-bun run release              # full gate + publish (CI / maintainers)
+bun run release              # changeset publish (same as CI; run check:full locally first)
 ```
 
 ## CI gates
@@ -89,7 +91,7 @@ bun run release              # full gate + publish (CI / maintainers)
 | Workflow | Gate |
 |----------|------|
 | `ci.yml` | `check:full`, audit (non-blocking) |
-| `release.yml` | Changesets + publish after `check:full` |
+| `release.yml` | Changesets version PR or publish via OIDC (no duplicate `check:full`) |
 
 ## Troubleshooting
 

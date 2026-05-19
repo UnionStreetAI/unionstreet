@@ -60,7 +60,7 @@
     "clean": "rm -rf packages/*/dist plugins/*/dist node_modules",
     "changeset": "changeset",
     "version-packages": "changeset version && bun install",
-    "release": "bun run check:full && changeset publish",
+    "release": "changeset publish",
     "pack:verify": "bun run --cwd packages/npm pack:verify"
   },
   "devDependencies": {
