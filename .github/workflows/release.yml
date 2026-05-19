@@ -3,7 +3,7 @@
 #   org/user: UnionStreetAI
 #   repository: unionstreet
 #   workflow filename: release.yml
-#   environment: release (must match job environment below)
+#   environment: (leave blank on npm unless you add `environment:` below)
 name: Release
 
 on:
