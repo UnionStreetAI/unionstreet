@@ -59,13 +59,9 @@ On **@unionstreet/us** → **Settings** → **Trusted Publisher** → **GitHub A
 | Organization or user | `UnionStreetAI` |
 | Repository | `unionstreet` |
 | Workflow filename | `release.yml` |
-| Environment | `release` |
+| Environment | *(leave blank)* |
 
-Environment name must match `environment: release` in `.github/workflows/release.yml` exactly.
-
-### 4. GitHub `release` environment
-
-Repo → **Settings** → **Environments** → create **`release`** (optional required reviewers).
+Leave **Environment** empty on npm unless you also add `environment: …` to the release job in `.github/workflows/release.yml` (not required by default).
 
 ## Day-to-day flow
 
@@ -97,7 +93,7 @@ bun run release              # changeset publish (same as CI; run check:full loc
 
 | Symptom | Cause |
 |---------|--------|
-| `404` on publish | Package missing, wrong trusted-publisher fields, or environment mismatch |
+| `404` on publish | Package missing, wrong trusted-publisher fields, or environment mismatch (npm vs workflow) |
 | Empty / broken install | `prepack` did not run — publish only from `packages/npm` via changesets |
 | `workspace:*` in tarball | Never publish workspace packages directly; only `packages/npm` is public |
 
@@ -107,7 +103,7 @@ bun run release              # changeset publish (same as CI; run check:full loc
 - [ ] `bun run pack:verify`
 - [ ] `bash -n scripts/install.sh` and `bash scripts/install.sh --help`
 - [ ] Trusted publisher on `@unionstreet/us` only
-- [ ] GitHub `release` environment exists
+- [ ] Trusted publisher **Environment** blank (or matches workflow job `environment:` if you add one)
 - [ ] Changeset on `main`
 - [ ] After release: `install.sh` attached to GitHub Release; `unionstreet.ai/install` serves or redirects to it ([install.md](install.md))
 
