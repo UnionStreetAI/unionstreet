@@ -56,7 +56,7 @@ On **@unionstreet/us** → **Settings** → **Trusted Publisher** → **GitHub A
 
 | Field | Value |
 |-------|--------|
-| Organization or user | `UnionStreetAI` |
+| Organization or user | `UnionStreetAI` (case-sensitive — must match github.com/UnionStreetAI) |
 | Repository | `unionstreet` |
 | Workflow filename | `release.yml` |
 | Environment | *(leave blank)* |
