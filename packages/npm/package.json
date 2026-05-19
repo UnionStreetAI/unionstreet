@@ -1,6 +1,6 @@
 {
   "name": "@unionstreet/us",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": false,
   "license": "MIT",
   "description": "Union Street — local-first multi-agent runtime, us CLI, server, SDK, and provider auth.",
@@ -30,7 +30,10 @@
   "bin": {
     "us": "bin/us"
   },
-  "files": [".pack", "bin"],
+  "files": [
+    ".pack",
+    "bin"
+  ],
   "imports": {
     "@unionstreet/server": "./.pack/server/src/index.ts",
     "@unionstreet/us-auth": "./.pack/us-auth/src/index.ts",

@@ -61,5 +61,40 @@ describe("npm packaging", () => {
       existsSync(join(repoRoot, "packages/npm/.pack/server/src/agent-pack.test.ts")),
       "test files should not ship in the npm tarball",
     ).toBe(false);
+
+    const packRoot = join(repoRoot, "packages/npm/.pack");
+    const sourceGlob = new Bun.Glob("**/*.{ts,tsx}");
+    for await (const file of sourceGlob.scan({ cwd: packRoot, onlyFiles: true })) {
+      const content = await readFile(join(packRoot, file), "utf8");
+      expect(content, `${file} should not keep workspace import specifiers`).not.toMatch(
+        /(?:from|import\s*\()\s*["']@unionstreet\//,
+      );
+    }
+  });
+
+  test("staged CLI entry runs under Bun", async () => {
+    // Arrange
+    const proc = Bun.spawn(["bun", "run", join(repoRoot, "scripts/stage-npm-package.ts")], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await proc.exited;
+
+    // Act
+    const cli = Bun.spawn(["bun", join(repoRoot, "packages/npm/bin/us"), "--help"], {
+      cwd: join(repoRoot, "packages/npm"),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, stdout, stderr] = await Promise.all([
+      cli.exited,
+      new Response(cli.stdout).text(),
+      new Response(cli.stderr).text(),
+    ]);
+
+    // Assert
+    expect(code, stderr).toBe(0);
+    expect(stdout.length + stderr.length).toBeGreaterThan(0);
   });
 });

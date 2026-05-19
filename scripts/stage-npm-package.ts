@@ -5,6 +5,7 @@
  */
 import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { rewritePackTree } from "./rewrite-pack-imports.ts";
 
 const repoRoot = join(import.meta.dir, "..");
 const packRoot = join(repoRoot, "packages/npm/.pack");
@@ -27,4 +28,8 @@ for await (const file of testGlob.scan({ cwd: packRoot, onlyFiles: true })) {
   pruned += 1;
 }
 
-console.log(`staged ${modules.length} modules → packages/npm/.pack (pruned ${pruned} test files)`);
+const rewritten = await rewritePackTree(packRoot);
+
+console.log(
+  `staged ${modules.length} modules → packages/npm/.pack (pruned ${pruned} test files, rewrote imports in ${rewritten} files)`,
+);
