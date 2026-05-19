@@ -37,11 +37,11 @@ jobs:
         with:
           bun-version: "1.3.11"
 
-      # Do not set registry-url here — it injects NODE_AUTH_TOKEN and breaks OIDC (npm/cli#8730).
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: "24"
+          registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
       - name: Use npm with trusted-publishing support
@@ -64,7 +64,11 @@ jobs:
       - name: Publish to npm via OIDC
         if: steps.changesets.outputs.hasChangesets == 'false'
         working-directory: packages/npm
+        env:
+          NODE_AUTH_TOKEN: ""
+          NPM_TOKEN: ""
         run: |
+          unset NODE_AUTH_TOKEN NPM_TOKEN
           PKG_VERSION=$(node -p "require('./package.json').version")
           if npm view "@unionstreet/us@${PKG_VERSION}" version >/dev/null 2>&1; then
             echo "@unionstreet/us@${PKG_VERSION} already on npm, skipping"
