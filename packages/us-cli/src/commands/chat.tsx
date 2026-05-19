@@ -1,5 +1,5 @@
 /**
- * `us chat [profile]` — mount the opentui chat app.
+ * `us chat [profile]` / `us tui [profile]` — mount the opentui chat app.
  *
  * This file owns environment+IO: profile resolution, auth, system-prompt
  * assembly, session-file paths. Everything visual is in `../ui/App.tsx`.

@@ -1,0 +1,56 @@
+# Publishes @unionstreet/* to npm via Changesets + npm trusted publishing (OIDC).
+# Configure each package on npmjs.com with trusted publisher:
+#   org/user: UnionStreetAI
+#   repository: unionstreet
+#   workflow filename: release.yml
+#   environment: release (must match the job environment below)
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    name: Version and publish
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Setup Node (npm 11.5+ for OIDC trusted publishing)
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Create release pull request or publish to npm
+        uses: changesets/action@v1
+        with:
+          version: bun run version-packages
+          publish: bun run release
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

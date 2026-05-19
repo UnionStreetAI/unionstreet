@@ -215,6 +215,7 @@ cli
 
 cli
   .command("chat [profile]", "Open a chat session. If profile is omitted, uses default or sole profile.")
+  .alias("tui")
   .option("-p, --profile <profile>", "Profile to run as, same as the optional positional profile.")
   .action(async (profile: string | undefined, options) => {
     try {

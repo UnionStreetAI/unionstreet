@@ -1,11 +1,8 @@
 {
   "name": "@unionstreet/us-auth",
   "version": "0.0.0",
-  "private": false,
+  "private": true,
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "description": "OAuth credential management for US providers (Codex/ChatGPT, Anthropic Claude Pro, GitHub Copilot, Google Gemini CLI, Antigravity).",
   "homepage": "https://github.com/UnionStreetAI/unionstreet#readme",
   "repository": {

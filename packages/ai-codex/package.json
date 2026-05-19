@@ -1,11 +1,8 @@
 {
   "name": "@unionstreet/ai-codex",
   "version": "0.0.0",
-  "private": false,
+  "private": true,
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "description": "Minimal client for the ChatGPT (Codex) Responses API. Uses OAuth bearer credentials.",
   "homepage": "https://github.com/UnionStreetAI/unionstreet#readme",
   "repository": {

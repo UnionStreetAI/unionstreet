@@ -1,11 +1,8 @@
 {
   "name": "@unionstreet/server",
   "version": "0.0.0",
-  "private": false,
+  "private": true,
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "description": "Union Street server: agents, runs, memory, plugins, providers, runtime HTTP, and control-plane contracts.",
   "homepage": "https://github.com/UnionStreetAI/unionstreet#readme",
   "repository": {

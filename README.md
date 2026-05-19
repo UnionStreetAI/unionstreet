@@ -44,11 +44,11 @@ What works today:
 - Docker runtime planning/start/status/destroy mechanics
 - Kubernetes manifest render and dry-run validation
 - plugin manifests, plugin inspection, and repo-local skill bundles
+- npm install via `bunx @unionstreet/us` (single package; pre-alpha)
 
 What is intentionally not promised yet:
 
 - production hardening for untrusted agents
-- npm-published Union Street packages
 - Kubernetes apply/reconcile
 - complete cloud runtime providers
 - hands-off onboarding on a fresh machine without model-provider credentials
@@ -67,10 +67,19 @@ Requirements:
 Install and verify:
 
 ```sh
+curl -fsSL https://unionstreet.ai/install.sh | bash
+us doctor
+```
+
+From git (contributors):
+
+```sh
 curl -fsSL https://bun.sh/install | bash
 bun install
 bun run doctor
 ```
+
+See [Install script](docs/install.md) for pinned versions and GitHub-hosted URLs.
 
 On macOS, the local memory substrate can be installed with:
 
@@ -85,6 +94,7 @@ Create a profile and open the chat UI:
 ```sh
 bun run us init coder
 bun run us chat coder
+# or: bun run us tui coder
 ```
 
 Run a non-interactive local sanity check:
@@ -113,10 +123,19 @@ Union Street is organized around a few explicit contracts:
 
 Read more:
 
+- [Docs For Humans](docs/index.md) — the conceptual map.
+- [Quickstart](docs/quickstart.md) — install, setup, first profile, first fleet.
+- [Agent Organizations](docs/agent-organizations.md) — profiles, managers,
+  reports, roles, groups, and fleet plans.
+- [Identity](docs/identity.md) — OIDC-style principals for agents.
+- [Tools](docs/tools.md) — scoped MCP auth and plugin grants.
+- [Runtime](docs/runtime.md) — laptop, Docker/Kubernetes shape, and VPC story.
+- [Skills](docs/skills.md) — installable operating playbooks for AI agents.
 - [Control Plane And Runtime Contracts](docs/control-plane-runtime.md)
 - [Plugin Architecture](docs/plugin-architecture.md)
 - [Server SDK](docs/server-sdk.md)
 - [Testing Battery](docs/testing.md)
+- Marketing site: [unionstreet-web](https://github.com/UnionStreetAI/unionstreet-web) (`unionstreet.ai`)
 
 ## Runtime Targets
 
@@ -152,15 +171,11 @@ For normal changes:
 
 ```sh
 bun install --frozen-lockfile
-bun run check:fast
+bun run check:full
 bun audit
 ```
 
-For runtime, auth, scheduler, memory, MCP, Lash, or orchestration changes:
-
-```sh
-bun run check:full
-```
+Install from npm (Bun 1.3+): `bunx @unionstreet/us`. Maintainers: [Release pipeline](docs/release.md).
 
 Live provider tests are opt-in:
 

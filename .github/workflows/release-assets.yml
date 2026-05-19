@@ -1,0 +1,41 @@
+# Attach install.sh to GitHub Releases (alongside npm publish from release.yml).
+name: Release assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install-script:
+    name: Upload install.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify install script
+        run: |
+          bash -n scripts/install.sh
+          bash scripts/install.sh --help
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: scripts/install.sh
+          fail_on_unmatched_files: true
+
+      - name: Redeploy unionstreet.ai
+        if: github.event_name == 'release'
+        env:
+          DEPLOY_HOOK_URL: ${{ vars.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$DEPLOY_HOOK_URL" ]; then
+            echo "VERCEL_DEPLOY_HOOK_URL not set; skip site redeploy."
+            exit 0
+          fi
+          curl -fsSL -X POST "$DEPLOY_HOOK_URL"
+          echo "Triggered Vercel deploy for unionstreet.ai (install.sh → /install)."

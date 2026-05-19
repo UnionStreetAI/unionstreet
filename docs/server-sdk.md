@@ -51,7 +51,8 @@ The initial SDK covers:
 ## Client Shape
 
 ```ts
-import { UnionStreetClient } from "@unionstreet/sdk";
+import { UnionStreetClient } from "@unionstreet/sdk"; // workspace dev
+// import { UnionStreetClient } from "@unionstreet/us/sdk"; // npm install
 
 const client = new UnionStreetClient({
   baseUrl: "http://127.0.0.1:8787",

@@ -1,7 +1,7 @@
 {
   "name": "union-street",
   "version": "0.0.0",
-  "private": false,
+  "private": true,
   "license": "MIT",
   "description": "Local-first multi-agent runtime for explicit agent organizations, Lash delegation, MCP tools, schedules, and memory.",
   "homepage": "https://github.com/UnionStreetAI/unionstreet#readme",
@@ -57,9 +57,14 @@
     "duck:install": "duck install",
     "duck": "duck check",
     "duck:json": "duck check --json",
-    "clean": "rm -rf packages/*/dist plugins/*/dist node_modules"
+    "clean": "rm -rf packages/*/dist plugins/*/dist node_modules",
+    "changeset": "changeset",
+    "version-packages": "changeset version && bun install",
+    "release": "bun run check:full && changeset publish",
+    "pack:verify": "bun run --cwd packages/npm pack:verify"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.29.8",
     "@types/js-yaml": "^4.0.9",
     "@types/bun": "latest",
     "@unionstreet/duck": "^0.1.0",

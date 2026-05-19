@@ -19,11 +19,8 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Typecheck, tests, smoke, and build
-        run: bun run check:parallel
-
-      - name: Stress runtime boundaries
-        run: bun run test:stress
+      - name: Full local gate (typecheck, tests, smoke, adversarial)
+        run: bun run check:full
 
       - name: Dependency audit
         run: bun audit

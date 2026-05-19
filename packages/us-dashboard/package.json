@@ -1,11 +1,8 @@
 {
   "name": "@unionstreet/us-dashboard",
   "version": "0.0.0",
-  "private": false,
+  "private": true,
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "description": "Local browser management dashboard for Union Street runtime.",
   "type": "module",
   "scripts": {
